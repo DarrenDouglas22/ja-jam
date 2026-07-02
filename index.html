@@ -822,14 +822,17 @@ function renderBall() {
 
 function renderHUD() {
   ctx.textBaseline = 'middle';
-  // scores
+  // scores: drawn flags + ASCII text (emoji inside aligned strings clips on mobile)
+  const FW = 30, FH = 19, FY = 42 - FH / 2;
+  drawJamFlag(48, FY, FW, FH);
+  drawBahFlag(W - 48 - FW, FY, FW, FH);
   ctx.font = 'bold 30px "Courier New", monospace';
   ctx.textAlign = 'left';
   ctx.fillStyle = TEAMS[0].accent;
-  ctx.fillText(TEAMS[0].flag + ' ' + TEAMS[0].abbr + '  ' + scores[0], 48, 42);
+  ctx.fillText(TEAMS[0].abbr + '  ' + scores[0], 48 + FW + 10, 42);
   ctx.textAlign = 'right';
   ctx.fillStyle = TEAMS[1].accent;
-  ctx.fillText(scores[1] + '  ' + TEAMS[1].abbr + ' ' + TEAMS[1].flag, W - 48, 42);
+  ctx.fillText(scores[1] + '  ' + TEAMS[1].abbr, W - 48 - FW - 10, 42);
   // timer
   ctx.textAlign = 'center';
   ctx.font = 'bold 34px "Courier New", monospace';
