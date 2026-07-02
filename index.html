@@ -20,10 +20,41 @@
     max-width: 100%;
     height: auto;
   }
+  /* touch controls: hidden unless on a touch device (or forced with ?touch) */
+  #touch { display: none; }
+  @media (pointer: coarse) { #touch { display: block; } }
+  #touch.on { display: block; }
+  #touch button {
+    position: fixed;
+    bottom: 18px;
+    width: 68px; height: 68px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 215, 0, 0.7);
+    background: rgba(0, 155, 58, 0.35);
+    color: #fff;
+    font: bold 24px Arial, sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    z-index: 10;
+  }
+  #touch button:active { background: rgba(255, 215, 0, 0.45); }
+  #tL { left: 18px; }
+  #tR { left: 100px; }
+  #tJ { right: 100px; background: rgba(0, 119, 139, 0.4); }
+  #tA { right: 18px; background: rgba(255, 107, 0, 0.45); }
+  #touch #tA { font-size: 13px; }
 </style>
 </head>
 <body>
 <canvas id="game" width="800" height="500"></canvas>
+<div id="touch">
+  <button id="tL" aria-label="move left">&#9664;</button>
+  <button id="tR" aria-label="move right">&#9654;</button>
+  <button id="tJ" aria-label="jump">&#11014;</button>
+  <button id="tA" aria-label="shoot or steal">SHOOT</button>
+</div>
 <script>
 'use strict';
 
@@ -282,6 +313,32 @@ canvas.addEventListener('click', e => {
     if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) startGame();
   }
 });
+
+// ============================================================ touch controls (mobile)
+const touchPanel = document.getElementById('touch');
+if (location.search.includes('touch')) touchPanel.classList.add('on');
+window.addEventListener('touchstart', () => touchPanel.classList.add('on'), { once: true, passive: true });
+
+function touchPress(fn) {
+  initAudio();
+  if (state === 'title' || state === 'over') { startGame(); return; }
+  fn();
+}
+function bindTouch(el, onDown, onUp) {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); onDown(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+    el.addEventListener(ev, e => { e.preventDefault(); if (onUp) onUp(); }));
+}
+bindTouch(document.getElementById('tL'),
+  () => touchPress(() => { keys[CONTROLS.left] = true; }),
+  () => { keys[CONTROLS.left] = false; });
+bindTouch(document.getElementById('tR'),
+  () => touchPress(() => { keys[CONTROLS.right] = true; }),
+  () => { keys[CONTROLS.right] = false; });
+bindTouch(document.getElementById('tJ'),
+  () => touchPress(() => { if (players[0].grounded) players[0].vy = -JUMP_V; }));
+bindTouch(document.getElementById('tA'),
+  () => touchPress(() => doAction(players[0])));
 
 // ============================================================ actions
 function doAction(p) {
@@ -768,7 +825,8 @@ function renderHUD() {
   ctx.font = '12px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
   ctx.textAlign = 'left';
-  ctx.fillText('P1 • ←→ move • ↑ jump • SPACE shoot/steal', COURT.left, 486);
+  const touchOn = getComputedStyle(touchPanel).display !== 'none';
+  ctx.fillText(touchOn ? 'P1 • touch controls' : 'P1 • ←→ move • ↑ jump • SPACE shoot/steal', COURT.left, 486);
   ctx.textAlign = 'right';
   ctx.fillText(TEAMS[1].playerName + ' • CPU Lv.' + (cpuLevel + 1), COURT.right + 24, 486);
 }
