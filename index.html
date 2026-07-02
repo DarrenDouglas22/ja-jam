@@ -184,7 +184,7 @@ const SPRITES = [
 ];
 
 // ============================================================ state
-let state = 'title'; // title | playing | over
+let state = 'title'; // title | help | playing | over
 let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
 
 const players = [0, 1].map(i => ({
@@ -290,7 +290,11 @@ Object.values(CONTROLS).forEach(k => ALL_KEYS.add(k));
 window.addEventListener('keydown', e => {
   if (ALL_KEYS.has(e.code)) e.preventDefault();
   initAudio();
-  if (state === 'title') { startGame(); return; }
+  if (state === 'title') {
+    if (e.code === 'KeyH') { state = 'help'; return; }
+    startGame(); return;
+  }
+  if (state === 'help') { startGame(); return; }
   if (state === 'over') {
     if (e.code === 'Enter' || e.code === 'Space') startGame();
     return;
@@ -308,7 +312,12 @@ canvas.addEventListener('click', e => {
   const r = canvas.getBoundingClientRect();
   const mx = (e.clientX - r.left) * (W / r.width);
   const my = (e.clientY - r.top) * (H / r.height);
-  if (state === 'title') { startGame(); return; }
+  if (state === 'title') {
+    const hb = helpRect();
+    if (mx >= hb.x && mx <= hb.x + hb.w && my >= hb.y && my <= hb.y + hb.h) { state = 'help'; return; }
+    startGame(); return;
+  }
+  if (state === 'help') { startGame(); return; }
   if (state === 'over') {
     const b = playAgainRect();
     if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) startGame();
@@ -322,7 +331,7 @@ window.addEventListener('touchstart', () => touchPanel.classList.add('on'), { on
 
 function touchPress(fn) {
   initAudio();
-  if (state === 'title' || state === 'over') { startGame(); return; }
+  if (state !== 'playing') { startGame(); return; }
   fn();
 }
 function bindTouch(el, onDown, onUp) {
@@ -628,6 +637,7 @@ function render() {
   ctx.fillRect(0, 0, W, H);
 
   if (state === 'title') { renderTitle(); return; }
+  if (state === 'help') { renderHelp(); return; }
 
   renderCourt();
   renderHUD();
@@ -867,8 +877,7 @@ function renderBanner() {
   ctx.restore();
 }
 
-function renderTitle() {
-  // ambience stripes in team colors
+function renderStripes() {
   const stripes = ['#009B3A', '#FFD700', '#000000', '#00778B', '#FAD44D'];
   stripes.forEach((c, i) => {
     ctx.fillStyle = c;
@@ -876,28 +885,64 @@ function renderTitle() {
     ctx.fillRect(0, 430 + i * 14, W, 14);
   });
   ctx.globalAlpha = 1;
+}
+
+function helpRect() { return { x: CX - 105, y: 372, w: 210, h: 36 }; }
+
+function renderTitle() {
+  renderStripes();
 
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = 'bold 72px Arial, sans-serif';
   ctx.fillStyle = '#FFD700';
-  ctx.fillText('JA JAM', CX, 150);
+  ctx.fillText('JA JAM', CX, 160);
 
   ctx.font = 'bold 20px Arial, sans-serif';
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('\u{1F1EF}\u{1F1F2} TEAM JAMAICA  vs  TEAM BAHAMAS \u{1F1E7}\u{1F1F8}', CX, 232);
-
-  ctx.font = '15px "Courier New", monospace';
-  ctx.fillStyle = '#9AB0C8';
-  ctx.fillText('P1  ' + TEAMS[0].playerName + '   ←→ move   ↑ jump   SPACE shoot/steal', CX, 290);
-  ctx.fillText('VS  ' + TEAMS[1].playerName + '   (CPU · Lv.' + (cpuLevel + 1) + ')', CX, 315);
-  ctx.fillText('One hoop. First to 21, or best score in 2:00', CX, 350);
-  ctx.fillText('2 straight buckets = ON FIRE \u{1F525}', CX, 372);
-  ctx.fillText('No ball? Same button STEALS. Jump into a shot to BLOCK it', CX, 394);
+  ctx.fillText('\u{1F1EF}\u{1F1F2} JAMAICA  vs  BAHAMAS \u{1F1E7}\u{1F1F8}', CX, 240);
 
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 22px Arial, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
-  ctx.fillText('PRESS ANY KEY TO TIP OFF', CX, 420);
+  ctx.fillText('PRESS ANY KEY TO TIP OFF', CX, 320);
+
+  // how-to-play button
+  const hb = helpRect();
+  ctx.strokeStyle = 'rgba(154,176,200,0.7)';
+  ctx.lineWidth = 2;
+  rrect(hb.x, hb.y, hb.w, hb.h, 9);
+  ctx.stroke();
+  ctx.font = '14px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('HOW TO PLAY  [H]', CX, hb.y + hb.h / 2);
+}
+
+function renderHelp() {
+  renderStripes();
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 34px Arial, sans-serif';
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText('HOW TO PLAY', CX, 92);
+
+  ctx.font = '15px "Courier New", monospace';
+  ctx.fillStyle = '#E8EEF6';
+  const lines = [
+    '←→ move    ↑ jump    SPACE shoot / steal',
+    'On phones: use the touch buttons',
+    '',
+    'First to 21, or best score in 2:00 — tie goes to OT',
+    '2 straight buckets = ON FIRE \u{1F525}  (3 guaranteed shots)',
+    'No ball? Crowd the carrier and press SPACE to STEAL',
+    'Jump into a rising shot to BLOCK it (fire is unblockable)',
+    'Beat ' + TEAMS[1].playerName + ' and he comes back sharper (CPU · Lv.' + (cpuLevel + 1) + ')',
+  ];
+  lines.forEach((ln, i) => ctx.fillText(ln, CX, 150 + i * 27));
+
+  const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
+  ctx.font = 'bold 20px Arial, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
+  ctx.fillText('PRESS ANY KEY TO TIP OFF', CX, 400);
 }
 
 function playAgainRect() { return { x: CX - 100, y: 330, w: 200, h: 48 }; }
