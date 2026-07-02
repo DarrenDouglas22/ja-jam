@@ -889,6 +889,29 @@ function renderStripes() {
 
 function helpRect() { return { x: CX - 105, y: 372, w: 210, h: 36 }; }
 
+// canvas-drawn flags — emoji metrics differ per platform, geometry doesn't
+function drawJamFlag(x, y, w, h) { // gold saltire, green top/bottom, black hoist/fly
+  ctx.fillStyle = '#009B3A'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w * 0.42, y + h / 2); ctx.lineTo(x, y + h); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w * 0.58, y + h / 2); ctx.lineTo(x + w, y + h); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x + w, y + h);
+  ctx.moveTo(x + w, y); ctx.lineTo(x, y + h);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+function drawBahFlag(x, y, w, h) { // aqua-gold-aqua bands, black hoist triangle
+  ctx.fillStyle = '#00778B'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#FAD44D'; ctx.fillRect(x, y + h / 3, w, h / 3);
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w * 0.45, y + h / 2); ctx.lineTo(x, y + h); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+
 function renderTitle() {
   renderStripes();
 
@@ -897,15 +920,15 @@ function renderTitle() {
   ctx.fillStyle = '#FFD700';
   ctx.fillText('JA JAM', CX, 160);
 
-  // matchup: center a plain-ASCII string (reliable on every platform), then
-  // place each flag as its own center-anchored glyph — no emoji in the measured text
+  // matchup: centered ASCII text + canvas-drawn flags (identical on every platform)
   ctx.font = 'bold 20px Arial, sans-serif';
   ctx.fillStyle = '#FFFFFF';
   const matchup = 'JAMAICA  vs  BAHAMAS';
   ctx.fillText(matchup, CX, 240);
   const half = ctx.measureText(matchup).width / 2;
-  ctx.fillText('\u{1F1EF}\u{1F1F2}', CX - half - 15, 240);
-  ctx.fillText('\u{1F1E7}\u{1F1F8}', CX + half + 15, 240);
+  const fw = 27, fh = 17;
+  drawJamFlag(CX - half - 9 - fw, 240 - fh / 2, fw, fh);
+  drawBahFlag(CX + half + 9, 240 - fh / 2, fw, fh);
 
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 22px Arial, sans-serif';
