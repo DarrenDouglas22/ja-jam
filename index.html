@@ -37,7 +37,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const FLOOR = 440;                       // ground line (feet / ball rest here)
 const COURT = { left: 40, right: 736 };  // playable x range
 const CX = W / 2;
-const HOOP = { x: 707, y: 310, rimHalf: 16 }; // rim center, ~2 player-heights up
+const HOOP = { x: 707, y: 267, rimHalf: 16 }; // rim center, ~2 player-heights up (scaled with 32px sprites)
 const BB_X = 724;                        // backboard face
 const THREE_X = 230;                     // 3-pt line: horizontal distance from hoop
 const WIN_SCORE = 21;
@@ -45,7 +45,7 @@ const GAME_TIME = 120; // seconds
 
 // movement feel
 const ACCEL = 1600, FRICTION = 5.5, MAX_SPEED = 235, CARRIER_SPEED = 0.88;
-const GRAV = 1500, JUMP_V = 560, BALL_GRAV = 1350;
+const GRAV = 1500, JUMP_V = 700, BALL_GRAV = 1350; // jump velocity +25% for the bigger sprites
 
 const TEAMS = [
   { abbr: 'JAM', full: 'TEAM JAMAICA', flag: '\u{1F1EF}\u{1F1F2}', playerName: 'GIOVANNI',
@@ -56,10 +56,16 @@ const TEAMS = [
 
 const CONTROLS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', action: 'Space' }; // P1 only — P2 is CPU
 
+// Jamaica roster first names — P1 gets a fresh one every game
+const JAM_NAMES = ['PRINCE', 'JALEN', 'MICAH', 'MARCUS', 'GIOVANNI', 'JORDAN',
+                   'KENTAN', 'ROMAINE', 'JUSTIN', 'SEYI', 'NORMAN', 'ROMARO'];
+const rollJamName = () => { TEAMS[0].playerName = JAM_NAMES[(Math.random() * JAM_NAMES.length) | 0]; };
+rollJamName(); // title screen shows a name before the first game too
+
 // ============================================================ procedural pixel-art sprites
-// 24x24 big-head figures generated at load into offscreen canvases, drawn at 2x.
+// 32x32 big-head figures generated at load into offscreen canvases, drawn at 2x.
 // Per team: idle x2, run x4, jump x1, shoot x2.
-const SPRITE_PX = 24, SPRITE_SCALE = 2, SPRITE_SIZE = SPRITE_PX * SPRITE_SCALE;
+const SPRITE_PX = 32, SPRITE_SCALE = 2, SPRITE_SIZE = SPRITE_PX * SPRITE_SCALE;
 
 function makeSpriteSet(teamIdx, skin, hairStyle) {
   const MAIN = TEAMS[teamIdx].main, ACC = TEAMS[teamIdx].accent;
@@ -72,56 +78,56 @@ function makeSpriteSet(teamIdx, skin, hairStyle) {
     const px = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     const b = opts.bob || 0; // head bob offset (feet stay planted)
 
-    // --- big head (rows 0..10, +b)
-    px(6, 1 + b, 12, 3, HAIR);                                    // hair cap
-    if (hairStyle === 'hitop') px(7, b, 10, 1, HAIR);             // hi-top fade
-    if (hairStyle === 'locs') { px(4, 4 + b, 1, 5, HAIR); px(19, 4 + b, 1, 5, HAIR); } // side locs
-    px(6, 4 + b, 12, 1, ACC);                                     // headband
-    px(6, 5 + b, 12, 6, skin);                                    // face
-    px(5, 6 + b, 1, 3, skin); px(18, 6 + b, 1, 3, skin);          // ears
-    px(9, 7 + b, 2, 1, EYE); px(13, 7 + b, 2, 1, EYE);            // eyes
-    px(11, 9 + b, 2, 1, MOUTH);                                   // mouth
+    // --- big head (rows 0..14, +b)
+    px(8, 1 + b, 16, 4, HAIR);                                    // hair cap
+    if (hairStyle === 'hitop') px(9, b, 14, 1, HAIR);             // hi-top fade
+    if (hairStyle === 'locs') { px(6, 5 + b, 1, 6, HAIR); px(25, 5 + b, 1, 6, HAIR); } // side locs
+    px(8, 5 + b, 16, 2, ACC);                                     // headband
+    px(8, 7 + b, 16, 8, skin);                                    // face
+    px(7, 9 + b, 1, 4, skin); px(24, 9 + b, 1, 4, skin);          // ears
+    px(12, 10 + b, 2, 2, EYE); px(18, 10 + b, 2, 2, EYE);         // eyes
+    px(14, 13 + b, 4, 1, MOUTH);                                  // mouth
 
-    // --- jersey (rows 11..15)
-    px(8, 11, 8, 1, ACC);                                         // shoulder trim
-    px(8, 12, 8, 4, MAIN);                                        // jersey
-    px(11, 13, 2, 2, ACC);                                        // number blob
+    // --- jersey (rows 15..20)
+    px(10, 15, 12, 1, ACC);                                       // shoulder trim
+    px(10, 16, 12, 5, MAIN);                                      // jersey
+    px(14, 17, 4, 2, ACC);                                        // number blob
 
-    // --- shorts (rows 16..17)
-    px(8, 16, 8, 1, ACC);
-    px(8, 17, 8, 1, SHORTS);
+    // --- shorts (rows 21..22)
+    px(10, 21, 12, 1, ACC);
+    px(10, 22, 12, 1, SHORTS);
 
-    // --- legs + shoes (rows 18..23)
+    // --- legs + shoes (rows 23..31)
     switch (opts.legs) {
       case 'stand':
-        px(9, 18, 2, 4, skin); px(13, 18, 2, 4, skin);
-        px(8, 22, 3, 2, SHOE); px(13, 22, 3, 2, SHOE);
+        px(12, 23, 2, 6, skin); px(18, 23, 2, 6, skin);
+        px(11, 29, 4, 3, SHOE); px(17, 29, 4, 3, SHOE);
         break;
       case 'together':
-        px(10, 18, 2, 4, skin); px(12, 18, 2, 4, skin);
-        px(9, 22, 3, 2, SHOE); px(12, 22, 3, 2, SHOE);
+        px(14, 23, 2, 6, skin); px(16, 23, 2, 6, skin);
+        px(13, 29, 4, 3, SHOE); px(16, 29, 4, 3, SHOE);
         break;
       case 'runA': // left leg striding, right trailing
-        px(7, 18, 2, 3, skin); px(6, 21, 3, 2, SHOE);
-        px(14, 18, 2, 2, skin); px(15, 20, 3, 2, SHOE);
+        px(9, 23, 3, 5, skin); px(8, 28, 4, 3, SHOE);
+        px(19, 23, 3, 4, skin); px(20, 26, 4, 3, SHOE);
         break;
       case 'runB': // mirror of runA
-        px(15, 18, 2, 3, skin); px(15, 21, 3, 2, SHOE);
-        px(8, 18, 2, 2, skin); px(6, 20, 3, 2, SHOE);
+        px(20, 23, 3, 5, skin); px(20, 28, 4, 3, SHOE);
+        px(10, 23, 3, 4, skin); px(8, 26, 4, 3, SHOE);
         break;
       case 'tuck': // knees up mid-air
-        px(9, 18, 2, 2, skin); px(13, 18, 2, 2, skin);
-        px(8, 20, 3, 2, SHOE); px(13, 20, 3, 2, SHOE);
+        px(12, 23, 2, 3, skin); px(18, 23, 2, 3, skin);
+        px(11, 26, 4, 3, SHOE); px(17, 26, 4, 3, SHOE);
         break;
     }
 
     // --- arms (drawn last, in front of torso)
     switch (opts.arms) {
-      case 'down':   px(6, 12, 2, 4, skin); px(16, 12, 2, 4, skin); break;
-      case 'swingA': px(6, 11, 2, 3, skin); px(16, 13, 2, 4, skin); break;
-      case 'swingB': px(6, 13, 2, 4, skin); px(16, 11, 2, 3, skin); break;
-      case 'up':     px(4, 7 + b, 2, 5, skin); px(18, 7 + b, 2, 5, skin); break;  // windup by the ears
-      case 'extend': px(4, 3 + b, 2, 8, skin); px(18, 3 + b, 2, 8, skin); break;  // full overhead release
+      case 'down':   px(8, 16, 2, 6, skin); px(22, 16, 2, 6, skin); break;
+      case 'swingA': px(8, 15, 2, 4, skin); px(22, 17, 2, 6, skin); break;
+      case 'swingB': px(8, 17, 2, 6, skin); px(22, 15, 2, 4, skin); break;
+      case 'up':     px(5, 9 + b, 3, 7, skin); px(24, 9 + b, 3, 7, skin); break;   // windup by the ears
+      case 'extend': px(5, 4 + b, 3, 11, skin); px(24, 4 + b, 3, 11, skin); break; // full overhead release
     }
     return c;
   }
@@ -150,7 +156,7 @@ let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
 
 const players = [0, 1].map(i => ({
   team: i, x: 0, y: 0, vx: 0, vy: 0, fx: i === 0 ? 1 : -1, grounded: true,
-  w: 30, h: 38, streak: 0, fireShots: 0, stealCd: 0,
+  w: 40, h: 50, streak: 0, fireShots: 0, stealCd: 0,
   shootT: 0, jumpT: 0, runT: 0, // animation timers
 }));
 
@@ -179,6 +185,7 @@ function tipOff() {
 }
 
 function startGame() {
+  rollJamName();
   scores = [0, 0];
   timeLeft = GAME_TIME;
   suddenDeath = false;
@@ -316,7 +323,7 @@ function trySteal(p) {
   p.jumpT = 0.3; // lunge animation on every attempt
   if (ball.mode !== 'held' || ball.holder.team === p.team) return;
   const carrier = ball.holder;
-  if (Math.hypot(p.x - carrier.x, p.y - carrier.y) > 48) return;
+  if (Math.hypot(p.x - carrier.x, p.y - carrier.y) > 64) return;
   if (Math.random() < 0.4) {
     ball.holder = p;
     playSteal();
@@ -331,7 +338,7 @@ function cpuSkill() {
   return {
     delay: Math.max(0.15, 0.45 - cpuLevel * 0.06),      // reaction delay between decisions
     range: Math.min(300, 170 + cpuLevel * 25),          // shooting range: 2D distance to rim
-    stealDist: Math.min(46, 28 + cpuLevel * 4),         // how close he must be to pickpocket
+    stealDist: Math.min(61, 37 + cpuLevel * 5),         // how close he must be to pickpocket
     speed: Math.min(1, 0.72 + cpuLevel * 0.06),         // top-speed multiplier
   };
 }
@@ -463,8 +470,8 @@ function updatePlayer(p, ax, dt) {
   const max = (ball.holder === p ? CARRIER_SPEED : 1) * MAX_SPEED * (p.maxMul || 1);
   if (Math.abs(p.vx) > max) p.vx = Math.sign(p.vx) * max;
   p.x += p.vx * dt;
-  if (p.x < COURT.left + 14) { p.x = COURT.left + 14; p.vx = 0; }
-  if (p.x > COURT.right - 14) { p.x = COURT.right - 14; p.vx = 0; }
+  if (p.x < COURT.left + p.w / 2) { p.x = COURT.left + p.w / 2; p.vx = 0; }
+  if (p.x > COURT.right - p.w / 2) { p.x = COURT.right - p.w / 2; p.vx = 0; }
 
   // vertical: gravity, land on the ground plane
   p.vy += GRAV * dt;
@@ -481,8 +488,8 @@ function updatePlayer(p, ax, dt) {
 function updateBall(dt) {
   if (ball.mode === 'held') {
     const h = ball.holder;
-    ball.x = h.x + h.fx * 20;
-    ball.y = h.y - 2;
+    ball.x = h.x + h.fx * 26;
+    ball.y = h.y - 3;
     return;
   }
 
@@ -516,7 +523,7 @@ function updateBall(dt) {
 
   // pickup on contact
   for (const p of players) {
-    if (Math.hypot(p.x - ball.x, p.y - ball.y) < 30) {
+    if (Math.hypot(p.x - ball.x, p.y - ball.y) < 40) {
       ball.mode = 'held'; ball.holder = p;
       ball.vx = 0; ball.vy = 0;
       break;
@@ -550,8 +557,8 @@ function render() {
   const ballH = clamp(1 - (FLOOR - 8 - ball.y) / 300, 0.35, 1);
   renderShadow(ball.x, FLOOR + 4, 10 * ballH + 3, 4, 0.35 * ballH);
   players.forEach(p => {
-    const k = clamp(1 - (standY(p) - p.y) / 160, 0.45, 1);
-    renderShadow(p.x, FLOOR + 5, 20 * k, 6, 0.3 * k);
+    const k = clamp(1 - (standY(p) - p.y) / 200, 0.45, 1);
+    renderShadow(p.x, FLOOR + 5, 26 * k, 7, 0.3 * k);
   });
 
   players.forEach(renderPlayer);
@@ -625,11 +632,11 @@ function renderCourt() {
 function renderHoop() {
   // wall arm + backboard
   ctx.fillStyle = '#33414F';
-  ctx.fillRect(BB_X + 6, 252, W - BB_X - 6, 8);
+  ctx.fillRect(BB_X + 6, 209, W - BB_X - 6, 8);
   ctx.fillStyle = '#E8E8E8';
-  ctx.fillRect(BB_X, 230, 6, 92);
+  ctx.fillRect(BB_X, 187, 6, 92);
   ctx.fillStyle = '#B8B8B8';
-  ctx.fillRect(BB_X - 4, 306, 4, 8); // rim bracket
+  ctx.fillRect(BB_X - 4, 263, 4, 8); // rim bracket
   // rim
   ctx.fillStyle = '#FF4500';
   ctx.fillRect(HOOP.x - HOOP.rimHalf, HOOP.y - 2, HOOP.rimHalf * 2 + 1, 4);
@@ -669,11 +676,11 @@ function renderPlayer(p) {
   // fire glow
   if (p.fireShots > 0) {
     const flick = 0.55 + 0.45 * Math.sin(tGlobal * 18 + p.team * 3);
-    const g = ctx.createRadialGradient(p.x, p.y - 5, 6, p.x, p.y - 5, 44);
+    const g = ctx.createRadialGradient(p.x, p.y - 7, 8, p.x, p.y - 7, 56);
     g.addColorStop(0, 'rgba(255,140,0,' + (0.65 * flick) + ')');
     g.addColorStop(1, 'rgba(255,60,0,0)');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.x, p.y - 5, 44, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y - 7, 56, 0, Math.PI * 2); ctx.fill();
   }
 
   // pixel-art body: sprite bottom rides the player's feet (real jump arc shows)
