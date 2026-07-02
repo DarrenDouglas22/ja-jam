@@ -186,11 +186,13 @@ const SPRITES = [
 // ============================================================ state
 let state = 'title'; // title | help | playing | over
 let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
+let shake = 0; // screen-shake timer (dunks)
 
 const players = [0, 1].map(i => ({
   team: i, x: 0, y: 0, vx: 0, vy: 0, fx: i === 0 ? 1 : -1, grounded: true,
   w: 40, h: 50, streak: 0, fireShots: 0, stealCd: 0,
   shootT: 0, jumpT: 0, runT: 0, // animation timers
+  dunk: null, // in-flight dunk state
 }));
 
 const ball = {
@@ -205,6 +207,7 @@ function resetPlayerState(p) {
   p.vx = 0; p.vy = 0; p.streak = 0; p.fireShots = 0; p.stealCd = 0;
   p.fx = p.team === 0 ? 1 : -1; p.grounded = true;
   p.shootT = 0; p.jumpT = 0; p.runT = 0;
+  p.dunk = null;
 }
 
 function tipOff() {
@@ -225,6 +228,7 @@ function startGame() {
   winner = null;
   hoopFlash = 0;
   banner = null;
+  shake = 0;
   players.forEach(resetPlayerState);
   cpu.decideT = 0; cpu.dir = 0; cpu.wantSteal = false; cpu.shootAt = -1;
   players[1].maxMul = cpuSkill().speed;
@@ -279,6 +283,7 @@ const playFire   = () => noiseBurst(0.4, 0.35, 1800);                      // si
 const playBuzzer = () => tone(180, 180, 1.3, 'square', 0.25);              // flat buzzer
 const playRim    = () => tone(150, 90, 0.09, 'square', 0.15);              // clank
 const playBlock  = () => tone(260, 70, 0.12, 'square', 0.22);              // swat
+const playDunk   = () => { tone(100, 35, 0.35, 'square', 0.4); noiseBurst(0.3, 0.45, 240); }; // slam
 const playBounce = () => tone(120, 80, 0.05, 'sine', 0.07);
 
 // ============================================================ input
@@ -356,7 +361,47 @@ function doAction(p) {
   else trySteal(p);
 }
 
+// DUNK: airborne inside the arc with a clear lane -> fly to the rim and slam
+function defenderInLane(p) {
+  const opp = players[1 - p.team];
+  const x1 = p.x, y1 = p.y, x2 = HOOP.x - 20, y2 = HOOP.y;
+  const ddx = x2 - x1, ddy = y2 - y1;
+  const len2 = ddx * ddx + ddy * ddy;
+  if (len2 < 1) return false;
+  const t = clamp(((opp.x - x1) * ddx + (opp.y - y1) * ddy) / len2, 0, 1);
+  if (t < 0.15) return false; // defender behind the take-off point doesn't deny
+  return Math.hypot(opp.x - (x1 + ddx * t), opp.y - (y1 + ddy * t)) < 55;
+}
+
+function startDunk(p) {
+  const make = p.fireShots > 0 || Math.random() < 0.9; // flushes most of the time
+  p.dunk = { t: 0, dur: 0.45, sx: p.x, sy: p.y, tx: HOOP.x - 22, ty: HOOP.y - 6, make };
+  p.fx = 1; // face the hoop
+  p.jumpT = 0;
+}
+
+function finishDunk(p) {
+  const make = p.dunk.make;
+  p.dunk = null;
+  p.vy = 40; // drop off the rim
+  const fire = p.fireShots > 0;
+  if (make) {
+    shake = 0.35;
+    resolveMake({ shooter: p, pts: 2, fire, make: true, dunk: true });
+  } else {
+    shake = 0.15;
+    ball.holder = null;
+    resolveMiss({ shooter: p });
+  }
+}
+
 function shoot(p) {
+  if (!p.grounded && !p.dunk && p.x < HOOP.x - 26 &&
+      Math.abs(ball.x - HOOP.x) < THREE_X && !defenderInLane(p)) {
+    startDunk(p);
+    return;
+  }
+
   const dx = HOOP.x - ball.x, dy = HOOP.y - ball.y;
   const d = Math.hypot(dx, dy);
 
@@ -390,7 +435,7 @@ function trySteal(p) {
   if (p.stealCd > 0) return;
   p.stealCd = 0.8;
   p.jumpT = 0.3; // lunge animation on every attempt
-  if (ball.mode !== 'held' || ball.holder.team === p.team) return;
+  if (ball.mode !== 'held' || ball.holder.team === p.team || ball.holder.dunk) return; // can't strip a dunker
   const carrier = ball.holder;
   if (Math.hypot(p.x - carrier.x, p.y - carrier.y) > 64) return;
   if (Math.random() < 0.4) {
@@ -456,8 +501,13 @@ function resolveMake(f) {
   const t = f.shooter.team;
   scores[t] += f.pts;
   hoopFlash = 0.6;
-  playScore();
-  if (f.pts === 3) showBanner('THREE POINTER!', 1.2);
+  if (f.dunk) {
+    playDunk();
+    showBanner(TEAMS[t].playerName + ' THROWS IT DOWN!', 1.5);
+  } else {
+    playScore();
+    if (f.pts === 3) showBanner('THREE POINTER!', 1.2);
+  }
 
   const p = f.shooter;
   if (f.fire) {
@@ -506,6 +556,7 @@ function update(dt) {
   if (state !== 'playing') return;
 
   hoopFlash = Math.max(0, hoopFlash - dt);
+  shake = Math.max(0, shake - dt);
 
   cpuUpdate(dt);
   updatePlayer(players[0], (keys[CONTROLS.right] ? 1 : 0) - (keys[CONTROLS.left] ? 1 : 0), dt);
@@ -515,7 +566,7 @@ function update(dt) {
   // clock
   if (!suddenDeath) {
     timeLeft = Math.max(0, timeLeft - dt);
-    if (timeLeft <= 0 && ball.mode !== 'flight') { // let buzzer-beaters resolve
+    if (timeLeft <= 0 && ball.mode !== 'flight' && !players[0].dunk && !players[1].dunk) { // let buzzer-beaters resolve
       if (scores[0] === scores[1]) {
         suddenDeath = true;
         playBuzzer();
@@ -532,6 +583,18 @@ function updatePlayer(p, ax, dt) {
   p.stealCd = Math.max(0, p.stealCd - dt);
   p.shootT = Math.max(0, p.shootT - dt);
   p.jumpT = Math.max(0, p.jumpT - dt);
+
+  // dunk flight overrides normal physics: carried to the rim on an arc
+  if (p.dunk) {
+    const d = p.dunk;
+    d.t += dt;
+    const u = Math.min(1, d.t / d.dur);
+    p.x = d.sx + (d.tx - d.sx) * u;
+    p.y = d.sy + (d.ty - d.sy) * u - 46 * Math.sin(Math.PI * u);
+    p.vx = 0; p.vy = 0; p.grounded = false;
+    if (u >= 1) finishDunk(p);
+    return;
+  }
 
   // horizontal: accel + friction (less control in the air)
   p.vx += ax * ACCEL * (p.grounded ? 1 : 0.55) * dt;
@@ -557,6 +620,7 @@ function updatePlayer(p, ax, dt) {
 function updateBall(dt) {
   if (ball.mode === 'held') {
     const h = ball.holder;
+    if (h.dunk) { ball.x = h.x + h.fx * 10; ball.y = h.y - 34; return; } // ball cocked overhead
     ball.x = h.x + h.fx * 26;
     ball.y = h.y - 3;
     return;
@@ -639,6 +703,9 @@ function render() {
   if (state === 'title') { renderTitle(); return; }
   if (state === 'help') { renderHelp(); return; }
 
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * 14 * shake, (Math.random() - 0.5) * 10 * shake);
+
   renderCourt();
   renderHUD();
 
@@ -656,6 +723,7 @@ function render() {
 
   if (banner && banner.text) renderBanner();
   if (state === 'over') renderWin();
+  ctx.restore();
 }
 
 function renderShadow(x, y, rx, ry, alpha) {
@@ -753,6 +821,7 @@ function renderHoop() {
 
 function spriteFor(p) {
   const s = SPRITES[p.team];
+  if (p.dunk) return s.shoot[1]; // full-extension slam pose for the whole flight
   if (p.shootT > 0) return s.shoot[p.shootT > 0.3 ? 0 : 1]; // windup, then release
   if (!p.grounded || p.jumpT > 0) return s.jump[0];
   if (Math.abs(p.vx) > 40) return s.run[Math.floor(p.runT * 10) % 4];
@@ -967,9 +1036,10 @@ function renderHelp() {
     '2 straight buckets = ON FIRE \u{1F525}  (3 guaranteed shots)',
     'No ball? Crowd the carrier and press SPACE to STEAL',
     'Jump into a rising shot to BLOCK it (fire is unblockable)',
+    'Inside the arc: jump + shoot = DUNK (denied if the D is in the lane)',
     'Beat ' + TEAMS[1].playerName + ' and he comes back sharper (CPU · Lv.' + (cpuLevel + 1) + ')',
   ];
-  lines.forEach((ln, i) => ctx.fillText(ln, CX, 150 + i * 27));
+  lines.forEach((ln, i) => ctx.fillText(ln, CX, 150 + i * 25));
 
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 20px Arial, sans-serif';
