@@ -278,6 +278,7 @@ const playSteal  = () => tone(700, 180, 0.16, 'sawtooth', 0.18);           // de
 const playFire   = () => noiseBurst(0.4, 0.35, 1800);                      // sizzle
 const playBuzzer = () => tone(180, 180, 1.3, 'square', 0.25);              // flat buzzer
 const playRim    = () => tone(150, 90, 0.09, 'square', 0.15);              // clank
+const playBlock  = () => tone(260, 70, 0.12, 'square', 0.22);              // swat
 const playBounce = () => tone(120, 80, 0.05, 'sine', 0.07);
 
 // ============================================================ input
@@ -558,6 +559,25 @@ function updateBall(dt) {
     const u = Math.min(1, f.t / f.dur);
     ball.x = f.sx + (f.tx - f.sx) * u;
     ball.y = f.sy + (f.ty - f.sy) * u - f.peak * Math.sin(Math.PI * u); // real arc over the rim
+
+    // BLOCK: an airborne defender who meets the rising ball swats it loose.
+    // Fire shots are unblockable — 100% means 100%.
+    if (!f.fire && u > 0.08 && u < 0.55) {
+      for (const p of players) {
+        if (p === f.shooter || p.grounded) continue;
+        if (Math.hypot(p.x - ball.x, (p.y - 15) - ball.y) < 34) {
+          ball.mode = 'loose';
+          ball.flight = null;
+          ball.vx = (p.x < HOOP.x ? -1 : 1) * (150 + Math.random() * 150); // swat away from the hoop
+          ball.vy = -(20 + Math.random() * 120);
+          f.shooter.streak = 0;
+          playBlock();
+          showBanner(TEAMS[p.team].playerName + ' WITH THE BLOCK!', 1.5);
+          return;
+        }
+      }
+    }
+
     if (u >= 1) {
       ball.flight = null;
       if (f.make) resolveMake(f); else resolveMiss(f);
@@ -821,7 +841,10 @@ function renderHUD() {
       ctx.fillText('\u{1F525} ' + TEAMS[i].playerName + ' ON FIRE', i === 0 ? 48 : W - 48, 70);
     }
   });
-  // controls legend
+  // controls legend + contextual touch action label
+  const actLabel = (ball.mode === 'held' && ball.holder === players[0]) ? 'SHOOT' : 'STEAL';
+  const btnA = document.getElementById('tA');
+  if (btnA.textContent !== actLabel) btnA.textContent = actLabel;
   ctx.font = '12px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
   ctx.textAlign = 'left';
@@ -869,6 +892,7 @@ function renderTitle() {
   ctx.fillText('VS  ' + TEAMS[1].playerName + '   (CPU · Lv.' + (cpuLevel + 1) + ')', CX, 315);
   ctx.fillText('One hoop. First to 21, or best score in 2:00', CX, 350);
   ctx.fillText('2 straight buckets = ON FIRE \u{1F525}', CX, 372);
+  ctx.fillText('No ball? Same button STEALS. Jump into a shot to BLOCK it', CX, 394);
 
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 22px Arial, sans-serif';
