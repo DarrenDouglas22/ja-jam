@@ -904,8 +904,8 @@ function renderTitle() {
   const matchup = 'JAMAICA  vs  BAHAMAS';
   ctx.fillText(matchup, CX, 240);
   const half = ctx.measureText(matchup).width / 2;
-  ctx.fillText('\u{1F1EF}\u{1F1F2}', CX - half - 24, 240);
-  ctx.fillText('\u{1F1E7}\u{1F1F8}', CX + half + 24, 240);
+  ctx.fillText('\u{1F1EF}\u{1F1F2}', CX - half - 15, 240);
+  ctx.fillText('\u{1F1E7}\u{1F1F8}', CX + half + 15, 240);
 
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 22px Arial, sans-serif';
