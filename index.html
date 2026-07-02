@@ -897,9 +897,16 @@ function renderTitle() {
   ctx.fillStyle = '#FFD700';
   ctx.fillText('JA JAM', CX, 160);
 
+  // matchup: anchor each piece so 'vs' sits dead-center regardless of emoji glyph widths
   ctx.font = 'bold 20px Arial, sans-serif';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('vs', CX, 240);
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('\u{1F1EF}\u{1F1F2} JAMAICA  vs  BAHAMAS \u{1F1E7}\u{1F1F8}', CX, 240);
+  ctx.textAlign = 'right';
+  ctx.fillText('\u{1F1EF}\u{1F1F2} JAMAICA', CX - 26, 240);
+  ctx.textAlign = 'left';
+  ctx.fillText('BAHAMAS \u{1F1E7}\u{1F1F8}', CX + 26, 240);
+  ctx.textAlign = 'center';
 
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 22px Arial, sans-serif';
