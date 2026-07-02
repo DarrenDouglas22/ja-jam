@@ -8,7 +8,8 @@ Pushing to `main` auto-deploys via GitHub Pages: https://darrendouglas22.github.
 
 ## Structure
 
-- `index.html` — the whole game: constants → sprites → state → audio → input (keyboard + touch) → CPU opponent → scoring → update loop → render functions → screens
+- `index.html` — the whole game: constants → sprites → leaderboard (Supabase client + mock) → state → audio → input (keyboard + touch) → CPU opponent → scoring → update loop → render functions → screens
+- `leaderboard-setup.sql` — Supabase table/RLS setup for the global leaderboard; paste project URL + anon key into the `CONFIG` block in `index.html` to go live (empty keys = in-memory demo board)
 - `docs/solutions/` — documented solutions to past problems (bugs, best practices), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
 
 ## Gotchas

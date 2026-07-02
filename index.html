@@ -55,6 +55,9 @@
   <button id="tJ" aria-label="jump">&#11014;</button>
   <button id="tA" aria-label="shoot or steal">SHOOT</button>
 </div>
+<input id="ini" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="your initials"
+  style="position:fixed; left:50%; top:60%; width:1px; height:1px; opacity:0.01; border:none; padding:0; background:transparent; color:transparent;">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 'use strict';
 
@@ -94,6 +97,58 @@ const JAM_NAMES = ['PRINCE', 'JALEN', 'MICAH', 'MARCUS', 'GIOVANNI', 'JORDAN',
                    'KENTAN', 'ROMAINE', 'JUSTIN', 'SEYI', 'NORMAN', 'ROMARO'];
 const rollJamName = () => { TEAMS[0].playerName = JAM_NAMES[(Math.random() * JAM_NAMES.length) | 0]; };
 rollJamName(); // title screen shows a name before the first game too
+
+// ============================================================ leaderboard (Supabase)
+const SCORE_CAP = 30; // game max is 23 (win by 3 from 20); anything above is spoofed
+const CONFIG = {
+  SUPABASE_URL: '',      // e.g. 'https://xxxx.supabase.co'
+  SUPABASE_ANON_KEY: '', // anon public key (safe to ship client-side; RLS enforces rules)
+};
+
+const Leaderboard = (() => {
+  const live = !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY && window.supabase);
+  const client = live ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY) : null;
+  // in-memory mock so the UI runs before the backend is wired (deliberately not localStorage)
+  const mock = [
+    { id: 'm1', name: 'VJ',  score: 21, created_at: '2026-07-01T00:00:00Z' },
+    { id: 'm2', name: 'JAM', score: 15, created_at: '2026-07-01T00:01:00Z' },
+    { id: 'm3', name: 'BAH', score: 9,  created_at: '2026-07-01T00:02:00Z' },
+  ];
+  const valid = (name, score) =>
+    /^[A-Z0-9]{1,3}$/.test(name) && Number.isInteger(score) && score >= 0 && score <= SCORE_CAP;
+
+  async function submitScore(name, score) {
+    if (!valid(name, score)) return { error: 'invalid score or initials' };
+    if (!live) {
+      const row = { id: 'm' + Math.random().toString(36).slice(2), name, score, created_at: new Date().toISOString() };
+      mock.push(row);
+      return { row };
+    }
+    try {
+      const { data, error } = await client.from('scores').insert({ name, score }).select().single();
+      return error ? { error: error.message } : { row: data };
+    } catch (e) { return { error: String(e) }; }
+  }
+
+  async function fetchTopScores(limit = 10) {
+    if (!live) {
+      const rows = mock.slice()
+        .sort((a, b) => b.score - a.score || a.created_at.localeCompare(b.created_at))
+        .slice(0, limit);
+      return { rows };
+    }
+    try {
+      const { data, error } = await client.from('scores')
+        .select('id,name,score,created_at')
+        .order('score', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(limit);
+      return error ? { error: error.message } : { rows: data };
+    } catch (e) { return { error: String(e) }; }
+  }
+
+  return { submitScore, fetchTopScores, isLive: live };
+})();
 
 // ============================================================ procedural pixel-art sprites
 // 32x32 big-head figures generated at load into offscreen canvases, drawn at 2x.
@@ -184,9 +239,10 @@ const SPRITES = [
 ];
 
 // ============================================================ state
-let state = 'title'; // title | help | playing | over
+let state = 'title'; // title | help | playing | over | board
 let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
 let shake = 0; // screen-shake timer (dunks)
+let boardData = null, myFinalScore = 0, myEntry = null, submitting = false; // leaderboard flow
 
 const players = [0, 1].map(i => ({
   team: i, x: 0, y: 0, vx: 0, vy: 0, fx: i === 0 ? 1 : -1, grounded: true,
@@ -241,6 +297,39 @@ function endGame(teamIdx) {
   state = 'over';
   playBuzzer();
   if (teamIdx === 0) cpuLevel = Math.min(8, cpuLevel + 1); // beat VJ and he comes back sharper
+  showInitialsEntry(scores[0]); // the one leaderboard integration point
+}
+
+// ---- leaderboard flow -------------------------------------------------------
+const iniInput = document.getElementById('ini');
+iniInput.addEventListener('input', () => {
+  iniInput.value = iniInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+});
+
+function showInitialsEntry(score) {
+  myFinalScore = clamp(Math.round(score), 0, SCORE_CAP);
+  myEntry = null;
+  submitting = false;
+  iniInput.value = '';
+  setTimeout(() => iniInput.focus(), 50); // desktop gets the caret; mobile taps the slots
+}
+
+async function submitInitials() {
+  if (submitting || state !== 'over') return;
+  const name = iniInput.value;
+  if (!/^[A-Z0-9]{1,3}$/.test(name)) { iniInput.focus(); return; }
+  submitting = true;
+  const res = await Leaderboard.submitScore(name, myFinalScore);
+  submitting = false;
+  if (res.row) myEntry = res.row;
+  openBoard();
+}
+
+function openBoard() {
+  state = 'board';
+  boardData = null;
+  iniInput.blur();
+  Leaderboard.fetchTopScores(10).then(res => { boardData = res; });
 }
 
 function showBanner(text, dur = 2) { banner = { text, t: dur }; }
@@ -297,10 +386,15 @@ window.addEventListener('keydown', e => {
   initAudio();
   if (state === 'title') {
     if (e.code === 'KeyH') { state = 'help'; return; }
+    if (e.code === 'KeyL') { openBoard(); return; }
     startGame(); return;
   }
   if (state === 'help') { startGame(); return; }
   if (state === 'over') {
+    if (e.code === 'Enter') submitInitials(); // letters flow into the hidden initials input
+    return;
+  }
+  if (state === 'board') {
     if (e.code === 'Enter' || e.code === 'Space') startGame();
     return;
   }
@@ -317,15 +411,21 @@ canvas.addEventListener('click', e => {
   const r = canvas.getBoundingClientRect();
   const mx = (e.clientX - r.left) * (W / r.width);
   const my = (e.clientY - r.top) * (H / r.height);
+  const hit = (r) => mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
   if (state === 'title') {
-    const hb = helpRect();
-    if (mx >= hb.x && mx <= hb.x + hb.w && my >= hb.y && my <= hb.y + hb.h) { state = 'help'; return; }
+    if (hit(helpRect())) { state = 'help'; return; }
+    if (hit(boardRect())) { openBoard(); return; }
     startGame(); return;
   }
   if (state === 'help') { startGame(); return; }
   if (state === 'over') {
-    const b = playAgainRect();
-    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) startGame();
+    if (hit(goRect())) { submitInitials(); return; }
+    if (hit(skipRect())) { openBoard(); return; }
+    iniInput.focus(); // tap anywhere else = summon the keyboard (needed on mobile)
+    return;
+  }
+  if (state === 'board') {
+    if (hit(playAgainRect())) startGame();
   }
 });
 
@@ -336,7 +436,8 @@ window.addEventListener('touchstart', () => touchPanel.classList.add('on'), { on
 
 function touchPress(fn) {
   initAudio();
-  if (state !== 'playing') { startGame(); return; }
+  if (state === 'title' || state === 'help' || state === 'board') { startGame(); return; }
+  if (state === 'over') return; // initials screen: use the on-canvas buttons
   fn();
 }
 function bindTouch(el, onDown, onUp) {
@@ -702,6 +803,7 @@ function render() {
 
   if (state === 'title') { renderTitle(); return; }
   if (state === 'help') { renderHelp(); return; }
+  if (state === 'board') { renderBoard(); return; }
 
   ctx.save();
   if (shake > 0) ctx.translate((Math.random() - 0.5) * 14 * shake, (Math.random() - 0.5) * 10 * shake);
@@ -959,7 +1061,10 @@ function renderStripes() {
   ctx.globalAlpha = 1;
 }
 
-function helpRect() { return { x: CX - 105, y: 372, w: 210, h: 36 }; }
+function helpRect()  { return { x: CX - 215, y: 372, w: 205, h: 36 }; }
+function boardRect() { return { x: CX + 10, y: 372, w: 205, h: 36 }; }
+function goRect()    { return { x: CX - 150, y: 356, w: 140, h: 42 }; }
+function skipRect()  { return { x: CX + 10, y: 356, w: 140, h: 42 }; }
 
 // canvas-drawn flags — emoji metrics differ per platform, geometry doesn't
 function drawJamFlag(x, y, w, h) { // gold saltire, green top/bottom, black hoist/fly
@@ -1007,15 +1112,17 @@ function renderTitle() {
   ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
   ctx.fillText('PRESS ANY KEY TO TIP OFF', CX, 320);
 
-  // how-to-play button
-  const hb = helpRect();
+  // how-to-play + leaderboard buttons
   ctx.strokeStyle = 'rgba(154,176,200,0.7)';
   ctx.lineWidth = 2;
-  rrect(hb.x, hb.y, hb.w, hb.h, 9);
-  ctx.stroke();
   ctx.font = '14px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
-  ctx.fillText('HOW TO PLAY  [H]', CX, hb.y + hb.h / 2);
+  const hb = helpRect();
+  rrect(hb.x, hb.y, hb.w, hb.h, 9); ctx.stroke();
+  ctx.fillText('HOW TO PLAY  [H]', hb.x + hb.w / 2, hb.y + hb.h / 2);
+  const lb = boardRect();
+  rrect(lb.x, lb.y, lb.w, lb.h, 9); ctx.stroke();
+  ctx.fillText('LEADERBOARD  [L]', lb.x + lb.w / 2, lb.y + lb.h / 2);
 }
 
 function renderHelp() {
@@ -1047,40 +1154,134 @@ function renderHelp() {
   ctx.fillText('PRESS ANY KEY TO TIP OFF', CX, 400);
 }
 
-function playAgainRect() { return { x: CX - 100, y: 330, w: 200, h: 48 }; }
+function playAgainRect() { return { x: CX - 100, y: 392, w: 200, h: 42 }; }
 
 function renderWin() {
-  ctx.fillStyle = 'rgba(10,22,40,0.85)';
+  ctx.fillStyle = 'rgba(10,22,40,0.92)';
   ctx.fillRect(0, 0, W, H);
   const team = TEAMS[winner];
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = 'bold 48px Arial, sans-serif';
+  ctx.font = 'bold 40px Arial, sans-serif';
   ctx.fillStyle = team.accent;
-  ctx.fillText(team.full + ' WINS!', CX, 170);
-  ctx.font = 'bold 34px "Courier New", monospace';
+  ctx.fillText(team.full + ' WINS!', CX, 96);
+  ctx.font = 'bold 28px "Courier New", monospace';
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillText(scores[0] + '  –  ' + scores[1], CX, 235);
-  ctx.font = '16px "Courier New", monospace';
-  ctx.fillStyle = '#9AB0C8';
-  ctx.fillText(team.playerName + ' brings it home for ' + team.full, CX, 280);
+  ctx.fillText(scores[0] + '  –  ' + scores[1], CX, 142);
   if (winner === 0) {
+    ctx.font = '14px "Courier New", monospace';
     ctx.fillStyle = '#FF8C00';
-    ctx.fillText('VJ LEVELS UP — Lv.' + (cpuLevel + 1) + ' next game', CX, 304);
+    ctx.fillText('VJ LEVELS UP — Lv.' + (cpuLevel + 1) + ' next game', CX, 172);
   }
-  // play again button
-  const b = playAgainRect();
-  ctx.fillStyle = team.main;
-  rrect(b.x, b.y, b.w, b.h, 10);
-  ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = team.accent;
-  ctx.stroke();
+
+  // arcade initials entry
   ctx.font = 'bold 18px Arial, sans-serif';
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('PLAY AGAIN', CX, b.y + b.h / 2);
-  ctx.font = '13px "Courier New", monospace';
+  ctx.fillText('ENTER YOUR INITIALS — SCORE ' + myFinalScore, CX, 216);
+  const v = iniInput.value;
+  for (let i = 0; i < 3; i++) {
+    const sx = CX - 78 + i * 56, sy = 246, sw = 46, sh = 56;
+    ctx.strokeStyle = i === v.length ? '#00C2DD' : 'rgba(154,176,200,0.6)';
+    ctx.lineWidth = i === v.length ? 3 : 2;
+    rrect(sx, sy, sw, sh, 8);
+    ctx.stroke();
+    if (v[i]) {
+      ctx.font = 'bold 34px "Courier New", monospace';
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText(v[i], sx + sw / 2, sy + sh / 2 + 2);
+    } else if (i === v.length && Math.floor(tGlobal * 2.5) % 2) {
+      ctx.font = 'bold 34px "Courier New", monospace';
+      ctx.fillStyle = '#00C2DD';
+      ctx.fillText('_', sx + sw / 2, sy + sh / 2 + 2);
+    }
+  }
+  ctx.font = '12px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
-  ctx.fillText('(or press Enter)', CX, b.y + b.h + 22);
+  const touchOn = getComputedStyle(touchPanel).display !== 'none';
+  ctx.fillText(touchOn ? 'tap the boxes to type' : 'type letters • ENTER to post', CX, 326);
+
+  // post / skip buttons
+  const g = goRect(), s = skipRect();
+  const canPost = /^[A-Z0-9]{1,3}$/.test(v) && !submitting;
+  ctx.fillStyle = canPost ? '#009B3A' : 'rgba(0,155,58,0.35)';
+  rrect(g.x, g.y, g.w, g.h, 10); ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = canPost ? '#FFD700' : 'rgba(255,215,0,0.35)';
+  ctx.stroke();
+  ctx.font = 'bold 16px Arial, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(submitting ? 'POSTING…' : 'POST SCORE', g.x + g.w / 2, g.y + g.h / 2);
+  ctx.strokeStyle = 'rgba(154,176,200,0.7)';
+  ctx.lineWidth = 2;
+  rrect(s.x, s.y, s.w, s.h, 10); ctx.stroke();
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('SKIP', s.x + s.w / 2, s.y + s.h / 2);
+  if (!Leaderboard.isLive) {
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillText('demo board — Supabase not configured yet', CX, 430);
+  }
+}
+
+function renderBoard() {
+  renderStripes();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 34px Arial, sans-serif';
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText('LEADERBOARD', CX, 76);
+
+  ctx.font = 'bold 16px "Courier New", monospace';
+  if (!boardData) {
+    ctx.fillStyle = '#9AB0C8';
+    ctx.fillText('LOADING…', CX, 240);
+  } else if (boardData.error) {
+    ctx.fillStyle = '#FF5050';
+    ctx.fillText("couldn't reach the board", CX, 240);
+  } else if (boardData.rows.length === 0) {
+    ctx.fillStyle = '#9AB0C8';
+    ctx.fillText('no scores yet — be the first!', CX, 240);
+  } else {
+    boardData.rows.forEach((r, i) => {
+      const y = 116 + i * 26;
+      const mine = myEntry && r.id === myEntry.id;
+      if (i === 0) { // flame highlight on #1
+        const fg = ctx.createLinearGradient(CX - 170, y, CX + 170, y);
+        fg.addColorStop(0, 'rgba(255,60,0,0)');
+        fg.addColorStop(0.5, 'rgba(255,120,0,0.3)');
+        fg.addColorStop(1, 'rgba(255,60,0,0)');
+        ctx.fillStyle = fg;
+        ctx.fillRect(CX - 170, y - 12, 340, 24);
+      }
+      if (mine) { // aqua highlight on the player's own row
+        ctx.fillStyle = 'rgba(0,194,221,0.18)';
+        ctx.fillRect(CX - 170, y - 12, 340, 24);
+        ctx.strokeStyle = 'rgba(0,194,221,0.8)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(CX - 170, y - 12, 340, 24);
+      }
+      ctx.fillStyle = i === 0 ? '#FFD700' : mine ? '#7FE3F2' : '#E8EEF6';
+      ctx.textAlign = 'right';
+      ctx.fillText((i + 1) + '.', CX - 120, y);
+      ctx.textAlign = 'left';
+      ctx.fillText(r.name, CX - 96, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(String(r.score), CX + 150, y);
+    });
+    ctx.textAlign = 'center';
+  }
+
+  const b = playAgainRect();
+  ctx.fillStyle = '#009B3A';
+  rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#FFD700';
+  ctx.stroke();
+  ctx.font = 'bold 17px Arial, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText('PLAY', CX, b.y + b.h / 2);
+  if (!Leaderboard.isLive) {
+    ctx.font = '11px "Courier New", monospace';
+    ctx.fillStyle = '#9AB0C8';
+    ctx.fillText('demo board — resets on refresh until Supabase is configured', CX, 460);
+  }
 }
 
 // ============================================================ main loop
