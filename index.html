@@ -1124,7 +1124,7 @@ function renderHUD() {
   ctx.fillStyle = '#9AB0C8';
   ctx.textAlign = 'left';
   const touchOn = getComputedStyle(touchPanel).display !== 'none';
-  ctx.fillText(touchOn ? 'P1 • touch controls' : 'P1 • ←→ move • ↑ jump • SPACE shoot/steal', COURT.left, 486);
+  ctx.fillText(touchOn ? 'P1 • touch controls' : 'P1 • ←→ move • ↑ jump • SPACE shoot/steal • P pause', COURT.left, 486);
   ctx.textAlign = 'right';
   ctx.fillText(TEAMS[1].playerName + ' • CPU Lv.' + (cpuLevel + 1), COURT.right + 24, 486);
 }
