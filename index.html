@@ -239,7 +239,7 @@ const SPRITES = [
 ];
 
 // ============================================================ state
-let state = 'title'; // title | help | playing | over | board
+let state = 'title'; // title | help | playing | paused | over | board
 let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
 let shake = 0; // screen-shake timer (dunks)
 let boardData = null, myFinalScore = 0, myEntry = null, submitting = false; // leaderboard flow
@@ -405,8 +405,14 @@ window.addEventListener('keydown', e => {
     if (e.code === 'Enter' || e.code === 'Space') startGame();
     return;
   }
+  if (state === 'paused') {
+    if (e.code === 'KeyQ') { state = 'title'; return; }
+    if (!e.repeat) state = 'playing'; // any other key resumes
+    return;
+  }
   keys[e.code] = true;
   if (!e.repeat) {
+    if (e.code === 'KeyP' || e.code === 'Escape') { state = 'paused'; return; }
     if (e.code === CONTROLS.action) doAction(players[0]);
     if (e.code === CONTROLS.up && players[0].grounded) players[0].vy = -JUMP_V; // real jump
   }
@@ -437,6 +443,15 @@ canvas.addEventListener('click', e => {
   }
   if (state === 'board') {
     if (hit(playAgainRect())) startGame();
+    return;
+  }
+  if (state === 'playing') {
+    if (hit(pauseBtnRect())) state = 'paused';
+    return;
+  }
+  if (state === 'paused') {
+    if (hit(quitRect())) { state = 'title'; return; }
+    state = 'playing'; // tap anywhere else resumes
   }
 });
 
@@ -449,6 +464,7 @@ function touchPress(fn) {
   initAudio();
   if (state === 'title' || state === 'help' || state === 'board') { startGame(); return; }
   if (state === 'over') { if (!entryOpen) startGame(); return; } // initials screen: use the on-canvas buttons
+  if (state === 'paused') { state = 'playing'; return; } // any touch button resumes
   fn();
 }
 function bindTouch(el, onDown, onUp) {
@@ -681,8 +697,8 @@ function resetAfterScore(concederIdx) {
 // ============================================================ update
 function update(dt) {
   tGlobal += dt;
+  if (state !== 'playing') return; // pause freezes everything below, banners included
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
-  if (state !== 'playing') return;
 
   hoopFlash = Math.max(0, hoopFlash - dt);
   shake = Math.max(0, shake - dt);
@@ -861,7 +877,36 @@ function render() {
 
   if (banner && banner.text) renderBanner();
   if (state === 'over') renderWin();
+  if (state === 'paused') renderPause();
   ctx.restore();
+}
+
+function renderPause() {
+  ctx.fillStyle = 'rgba(10,22,40,0.82)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 52px Arial, sans-serif';
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText('PAUSED', CX, 190);
+
+  const r = resumeRect(), q = quitRect();
+  ctx.fillStyle = '#009B3A';
+  rrect(r.x, r.y, r.w, r.h, 10); ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#FFD700';
+  ctx.stroke();
+  ctx.font = 'bold 17px Arial, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText('RESUME', r.x + r.w / 2, r.y + r.h / 2);
+  ctx.strokeStyle = 'rgba(154,176,200,0.7)';
+  ctx.lineWidth = 2;
+  rrect(q.x, q.y, q.w, q.h, 10); ctx.stroke();
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('QUIT  [Q]', q.x + q.w / 2, q.y + q.h / 2);
+
+  ctx.font = '13px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('any key or tap resumes', CX, 240);
 }
 
 function renderShadow(x, y, rx, ry, alpha) {
@@ -1061,6 +1106,16 @@ function renderHUD() {
       ctx.fillText('\u{1F525} ' + TEAMS[i].playerName + ' ON FIRE', i === 0 ? 48 : W - 48, 70);
     }
   });
+  // pause button (tap or P)
+  const pb = pauseBtnRect();
+  ctx.strokeStyle = 'rgba(154,176,200,0.55)';
+  ctx.lineWidth = 1.5;
+  rrect(pb.x, pb.y, pb.w, pb.h, 6);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(154,176,200,0.8)';
+  ctx.fillRect(pb.x + 17, pb.y + 7, 4, 12);
+  ctx.fillRect(pb.x + 27, pb.y + 7, 4, 12);
+
   // controls legend + contextual touch action label
   const actLabel = (ball.mode === 'held' && ball.holder === players[0]) ? 'SHOOT' : 'STEAL';
   const btnA = document.getElementById('tA');
@@ -1102,6 +1157,9 @@ function boardRect()    { return { x: CX + 10, y: 372, w: 205, h: 36 }; }
 function goRect()       { return { x: CX - 150, y: 356, w: 140, h: 42 }; }
 function skipRect()     { return { x: CX + 10, y: 356, w: 140, h: 42 }; }
 function overPlayRect() { return { x: CX - 100, y: 268, w: 200, h: 46 }; }
+function pauseBtnRect() { return { x: CX - 24, y: 56, w: 48, h: 26 }; }
+function resumeRect()   { return { x: CX - 215, y: 300, w: 205, h: 46 }; }
+function quitRect()     { return { x: CX + 10, y: 300, w: 205, h: 46 }; }
 
 // canvas-drawn flags — emoji metrics differ per platform, geometry doesn't
 function drawJamFlag(x, y, w, h) { // gold saltire, green top/bottom, black hoist/fly
@@ -1173,7 +1231,7 @@ function renderHelp() {
   ctx.font = '15px "Courier New", monospace';
   ctx.fillStyle = '#E8EEF6';
   const lines = [
-    '←→ move    ↑ jump    SPACE shoot / steal',
+    '←→ move    ↑ jump    SPACE shoot / steal    P pause',
     'On phones: use the touch buttons',
     '',
     'First to 21, or best score in 2:00 — tie goes to OT',
