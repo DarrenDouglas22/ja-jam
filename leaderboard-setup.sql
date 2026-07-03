@@ -4,7 +4,7 @@
 create table public.scores (
   id         uuid primary key default gen_random_uuid(),
   name       text not null check (name ~ '^[A-Z0-9]{1,3}$'),
-  score      int  not null check (score >= 0 and score <= 30), -- game max is 23; cap blocks spoofed blowouts
+  score      int  not null check (score >= 0 and score <= 999), -- session run total across games; cap blocks spoofed scores
   created_at timestamptz not null default now()
 );
 

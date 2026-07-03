@@ -99,7 +99,7 @@ const rollJamName = () => { TEAMS[0].playerName = JAM_NAMES[(Math.random() * JAM
 rollJamName(); // title screen shows a name before the first game too
 
 // ============================================================ leaderboard (Supabase)
-const SCORE_CAP = 30; // game max is 23 (win by 3 from 20); anything above is spoofed
+const SCORE_CAP = 999; // leaderboard score = session run total across games (arcade 3 digits)
 const CONFIG = {
   SUPABASE_URL: '',      // e.g. 'https://xxxx.supabase.co'
   SUPABASE_ANON_KEY: '', // anon public key (safe to ship client-side; RLS enforces rules)
@@ -243,6 +243,7 @@ let state = 'title'; // title | help | playing | over | board
 let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
 let shake = 0; // screen-shake timer (dunks)
 let boardData = null, myFinalScore = 0, myEntry = null, submitting = false; // leaderboard flow
+let sessionScore = 0, entryOpen = false; // run total across games; entry shows when a loss ends the run
 
 const players = [0, 1].map(i => ({
   team: i, x: 0, y: 0, vx: 0, vy: 0, fx: i === 0 ? 1 : -1, grounded: true,
@@ -297,7 +298,12 @@ function endGame(teamIdx) {
   state = 'over';
   playBuzzer();
   if (teamIdx === 0) cpuLevel = Math.min(8, cpuLevel + 1); // beat VJ and he comes back sharper
-  showInitialsEntry(scores[0]); // the one leaderboard integration point
+  sessionScore += scores[0];
+  entryOpen = teamIdx === 1; // a loss ends the run — post the session total
+  if (entryOpen) {
+    showInitialsEntry(sessionScore); // the one leaderboard integration point
+    sessionScore = 0; // next run starts fresh
+  }
 }
 
 // ---- leaderboard flow -------------------------------------------------------
@@ -391,7 +397,8 @@ window.addEventListener('keydown', e => {
   }
   if (state === 'help') { startGame(); return; }
   if (state === 'over') {
-    if (e.code === 'Enter') submitInitials(); // letters flow into the hidden initials input
+    if (entryOpen) { if (e.code === 'Enter') submitInitials(); return; } // letters flow into the hidden input
+    if (e.code === 'Enter' || e.code === 'Space') startGame();
     return;
   }
   if (state === 'board') {
@@ -419,9 +426,13 @@ canvas.addEventListener('click', e => {
   }
   if (state === 'help') { startGame(); return; }
   if (state === 'over') {
-    if (hit(goRect())) { submitInitials(); return; }
-    if (hit(skipRect())) { openBoard(); return; }
-    iniInput.focus(); // tap anywhere else = summon the keyboard (needed on mobile)
+    if (entryOpen) {
+      if (hit(goRect())) { submitInitials(); return; }
+      if (hit(skipRect())) { openBoard(); return; }
+      iniInput.focus(); // tap anywhere else = summon the keyboard (needed on mobile)
+      return;
+    }
+    if (hit(overPlayRect())) startGame();
     return;
   }
   if (state === 'board') {
@@ -437,7 +448,7 @@ window.addEventListener('touchstart', () => touchPanel.classList.add('on'), { on
 function touchPress(fn) {
   initAudio();
   if (state === 'title' || state === 'help' || state === 'board') { startGame(); return; }
-  if (state === 'over') return; // initials screen: use the on-canvas buttons
+  if (state === 'over') { if (!entryOpen) startGame(); return; } // initials screen: use the on-canvas buttons
   fn();
 }
 function bindTouch(el, onDown, onUp) {
@@ -481,19 +492,33 @@ function startDunk(p) {
   p.jumpT = 0;
 }
 
-function finishDunk(p) {
-  const make = p.dunk.make;
-  p.dunk = null;
-  p.vy = 40; // drop off the rim
-  const fire = p.fireShots > 0;
-  if (make) {
+function reachRim(p) { // dunk flight arrives at the rim
+  const d = p.dunk;
+  if (d.make) {
+    // SLAM: effects hit now, the ball drops through, and the dunker hangs on the rim
+    d.fire = p.fireShots > 0;
+    d.hang = 0.55;
+    playDunk();
     shake = 0.35;
-    resolveMake({ shooter: p, pts: 2, fire, make: true, dunk: true });
+    hoopFlash = 0.6;
+    showBanner(TEAMS[p.team].playerName + ' THROWS IT DOWN!', 1.6);
+    ball.mode = 'loose'; ball.holder = null;
+    ball.x = HOOP.x; ball.y = HOOP.y + 12; ball.vx = 0; ball.vy = 160;
   } else {
+    // clanked dunk: no hang, straight off the iron
+    p.dunk = null;
+    p.vy = 40;
     shake = 0.15;
     ball.holder = null;
     resolveMiss({ shooter: p });
   }
+}
+
+function finishDunk(p) { // lets go of the rim; the bucket counts now
+  const fire = p.dunk.fire;
+  p.dunk = null;
+  p.vy = 120;
+  resolveMake({ shooter: p, pts: 2, fire, make: true, dunk: true, effectsDone: true });
 }
 
 function shoot(p) {
@@ -601,11 +626,14 @@ function cpuUpdate(dt) {
 function resolveMake(f) {
   const t = f.shooter.team;
   scores[t] += f.pts;
-  hoopFlash = 0.6;
   if (f.dunk) {
-    playDunk();
-    showBanner(TEAMS[t].playerName + ' THROWS IT DOWN!', 1.5);
+    if (!f.effectsDone) {
+      hoopFlash = 0.6;
+      playDunk();
+      showBanner(TEAMS[t].playerName + ' THROWS IT DOWN!', 1.5);
+    }
   } else {
+    hoopFlash = 0.6;
     playScore();
     if (f.pts === 3) showBanner('THREE POINTER!', 1.2);
   }
@@ -688,12 +716,20 @@ function updatePlayer(p, ax, dt) {
   // dunk flight overrides normal physics: carried to the rim on an arc
   if (p.dunk) {
     const d = p.dunk;
+    p.vx = 0; p.vy = 0; p.grounded = false;
+    if (d.hang !== undefined) {
+      // hanging on the rim
+      d.hang -= dt;
+      p.x = d.tx;
+      p.y = d.ty + Math.sin(tGlobal * 9) * 2.5;
+      if (d.hang <= 0) finishDunk(p);
+      return;
+    }
     d.t += dt;
     const u = Math.min(1, d.t / d.dur);
     p.x = d.sx + (d.tx - d.sx) * u;
     p.y = d.sy + (d.ty - d.sy) * u - 46 * Math.sin(Math.PI * u);
-    p.vx = 0; p.vy = 0; p.grounded = false;
-    if (u >= 1) finishDunk(p);
+    if (u >= 1) reachRim(p);
     return;
   }
 
@@ -1061,10 +1097,11 @@ function renderStripes() {
   ctx.globalAlpha = 1;
 }
 
-function helpRect()  { return { x: CX - 215, y: 372, w: 205, h: 36 }; }
-function boardRect() { return { x: CX + 10, y: 372, w: 205, h: 36 }; }
-function goRect()    { return { x: CX - 150, y: 356, w: 140, h: 42 }; }
-function skipRect()  { return { x: CX + 10, y: 356, w: 140, h: 42 }; }
+function helpRect()     { return { x: CX - 215, y: 372, w: 205, h: 36 }; }
+function boardRect()    { return { x: CX + 10, y: 372, w: 205, h: 36 }; }
+function goRect()       { return { x: CX - 150, y: 356, w: 140, h: 42 }; }
+function skipRect()     { return { x: CX + 10, y: 356, w: 140, h: 42 }; }
+function overPlayRect() { return { x: CX - 100, y: 268, w: 200, h: 46 }; }
 
 // canvas-drawn flags — emoji metrics differ per platform, geometry doesn't
 function drawJamFlag(x, y, w, h) { // gold saltire, green top/bottom, black hoist/fly
@@ -1173,10 +1210,33 @@ function renderWin() {
     ctx.fillText('VJ LEVELS UP — Lv.' + (cpuLevel + 1) + ' next game', CX, 172);
   }
 
-  // arcade initials entry
+  if (!entryOpen) {
+    // run continues: keep playing, total banks toward the board on a loss
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#00C2DD';
+    ctx.fillText('RUN TOTAL: ' + sessionScore + ' PTS', CX, 214);
+    ctx.font = '12px "Courier New", monospace';
+    ctx.fillStyle = '#9AB0C8';
+    ctx.fillText('lose and it posts to the leaderboard', CX, 238);
+    const b = overPlayRect();
+    ctx.fillStyle = team.main;
+    rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = team.accent;
+    ctx.stroke();
+    ctx.font = 'bold 18px Arial, sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('PLAY AGAIN', CX, b.y + b.h / 2);
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillStyle = '#9AB0C8';
+    ctx.fillText('(or press Enter)', CX, b.y + b.h + 20);
+    return;
+  }
+
+  // run over: arcade initials entry for the session total
   ctx.font = 'bold 18px Arial, sans-serif';
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('ENTER YOUR INITIALS — SCORE ' + myFinalScore, CX, 216);
+  ctx.fillText('RUN OVER — ' + myFinalScore + ' PTS — ENTER YOUR INITIALS', CX, 216);
   const v = iniInput.value;
   for (let i = 0; i < 3; i++) {
     const sx = CX - 78 + i * 56, sy = 246, sw = 46, sh = 56;
