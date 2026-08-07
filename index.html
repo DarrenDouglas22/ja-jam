@@ -160,9 +160,23 @@ const Leaderboard = (() => {
 // Per team: idle x2, run x4, jump x1, shoot x2.
 const SPRITE_PX = 32, SPRITE_SCALE = 2, SPRITE_SIZE = SPRITE_PX * SPRITE_SCALE;
 
-function makeSpriteSet(teamIdx, skin, hairStyle) {
+// deterministic per-name looks: a given name always gets the same face
+function nameHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function faceFor(name) {
+  const h = nameHash(name);
+  return { eyes: h % 3, brows: ((h / 3) | 0) % 3, mouth: ((h / 9) | 0) % 3 };
+}
+const JAM_SKINS = ['#5C3317', '#8D5524', '#6E4023'];
+const JAM_HAIR = ['locs', 'hitop', 'none'];
+
+function makeSpriteSet(teamIdx, skin, hairStyle, face) {
   const MAIN = TEAMS[teamIdx].main, ACC = TEAMS[teamIdx].accent;
   const HAIR = '#161616', SHOE = '#F2F2F2', EYE = '#0E0E0E', MOUTH = '#2E1808', SHORTS = '#141414';
+  const F = face || { eyes: 0, brows: 0, mouth: 0 };
 
   function frame(opts) {
     const c = document.createElement('canvas');
@@ -170,6 +184,7 @@ function makeSpriteSet(teamIdx, skin, hairStyle) {
     const g = c.getContext('2d');
     const px = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     const b = opts.bob || 0; // head bob offset (feet stay planted)
+    const onFire = !!opts.fireFace;
 
     // --- big head (rows 0..14, +b)
     px(8, 1 + b, 16, 4, HAIR);                                    // hair cap
@@ -178,8 +193,32 @@ function makeSpriteSet(teamIdx, skin, hairStyle) {
     px(8, 5 + b, 16, 2, ACC);                                     // headband
     px(8, 7 + b, 16, 8, skin);                                    // face
     px(7, 9 + b, 1, 4, skin); px(24, 9 + b, 1, 4, skin);          // ears
-    px(12, 10 + b, 2, 2, EYE); px(18, 10 + b, 2, 2, EYE);         // eyes
-    px(14, 13 + b, 4, 1, MOUTH);                                  // mouth
+
+    // --- expressive face: brows / eyes / mouth vary per player, snarl when on fire
+    const eyeCol = onFire ? '#E03000' : EYE;
+    if (onFire || F.brows === 2) {                                // angled game-face brows
+      px(11, 9 + b, 3, 1, HAIR); px(18, 9 + b, 3, 1, HAIR);
+      px(13, 10 + b, 1, 1, HAIR); px(18, 10 + b, 1, 1, HAIR);
+    } else if (F.brows === 1) {                                   // flat brows
+      px(11, 9 + b, 3, 1, HAIR); px(18, 9 + b, 3, 1, HAIR);
+    }
+    if (F.eyes === 1) {                                           // narrowed
+      px(12, 11 + b, 2, 1, eyeCol); px(18, 11 + b, 2, 1, eyeCol);
+    } else if (F.eyes === 2) {                                    // wide with whites
+      px(11, 10 + b, 3, 2, '#F4F4F4'); px(18, 10 + b, 3, 2, '#F4F4F4');
+      px(12, 10 + b, 2, 2, eyeCol); px(19, 10 + b, 2, 2, eyeCol);
+    } else {                                                      // classic
+      px(12, 10 + b, 2, 2, eyeCol); px(18, 10 + b, 2, 2, eyeCol);
+    }
+    if (onFire) {                                                 // gritted snarl
+      px(13, 12 + b, 6, 2, '#7A1010'); px(14, 12 + b, 4, 1, '#F4F4F4');
+    } else if (F.mouth === 1) {                                   // grin
+      px(13, 13 + b, 5, 1, MOUTH); px(12, 12 + b, 1, 1, MOUTH); px(18, 12 + b, 1, 1, MOUTH);
+    } else if (F.mouth === 2) {                                   // open (mid-shout)
+      px(14, 12 + b, 3, 2, MOUTH);
+    } else {                                                      // neutral
+      px(14, 13 + b, 4, 1, MOUTH);
+    }
 
     // --- jersey (rows 15..20)
     px(10, 15, 12, 1, ACC);                                       // shoulder trim
@@ -225,17 +264,18 @@ function makeSpriteSet(teamIdx, skin, hairStyle) {
     return c;
   }
 
-  return {
-    idle:  [frame({ arms: 'down', legs: 'stand', bob: 0 }),
-            frame({ arms: 'down', legs: 'stand', bob: 1 })],
-    run:   [frame({ arms: 'swingA', legs: 'runA' }),
-            frame({ arms: 'down', legs: 'together', bob: 1 }),
-            frame({ arms: 'swingB', legs: 'runB' }),
-            frame({ arms: 'down', legs: 'together', bob: 0 })],
-    jump:  [frame({ arms: 'up', legs: 'tuck' })],
-    shoot: [frame({ arms: 'up', legs: 'stand' }),
-            frame({ arms: 'extend', legs: 'tuck' })],
-  };
+  const set = fireFace => ({
+    idle:  [frame({ arms: 'down', legs: 'stand', bob: 0, fireFace }),
+            frame({ arms: 'down', legs: 'stand', bob: 1, fireFace })],
+    run:   [frame({ arms: 'swingA', legs: 'runA', fireFace }),
+            frame({ arms: 'down', legs: 'together', bob: 1, fireFace }),
+            frame({ arms: 'swingB', legs: 'runB', fireFace }),
+            frame({ arms: 'down', legs: 'together', bob: 0, fireFace })],
+    jump:  [frame({ arms: 'up', legs: 'tuck', fireFace })],
+    shoot: [frame({ arms: 'up', legs: 'stand', fireFace }),
+            frame({ arms: 'extend', legs: 'tuck', fireFace })],
+  });
+  return { norm: set(false), fire: set(true) }; // fire mode wears the snarl
 }
 
 const SPRITES = [
@@ -332,8 +372,7 @@ const teamById = id => ROSTER.find(t => t.id === id);
 let lastOppIdx = -1;
 
 function setOpponent(t) {
-  Object.assign(TEAMS[1], t);
-  SPRITES[1] = makeSpriteSet(1, t.skin, t.hair);
+  Object.assign(TEAMS[1], t); // sprites regenerate in startGame, after the name roll
 }
 
 function pickArcadeOpponent() { // random rotation, never the same team twice in a row
@@ -399,6 +438,10 @@ function startGame() {
   if (mode === 'arcade') pickArcadeOpponent();
   rollName(TEAMS[0]); // both slots roll from whoever's pool occupies them
   rollName(TEAMS[1]);
+  // one regeneration path for every mode: name decides the face, team decides the kit
+  const jh = nameHash(TEAMS[0].playerName);
+  SPRITES[0] = makeSpriteSet(0, JAM_SKINS[jh % 3], JAM_HAIR[((jh / 3) | 0) % 3], faceFor(TEAMS[0].playerName));
+  SPRITES[1] = makeSpriteSet(1, TEAMS[1].skin || '#8D5524', TEAMS[1].hair || 'hitop', faceFor(TEAMS[1].playerName));
   scores = [0, 0];
   timeLeft = GAME_TIME;
   suddenDeath = false;
@@ -1152,7 +1195,7 @@ function renderHoop() {
 }
 
 function spriteFor(p) {
-  const s = SPRITES[p.team];
+  const s = p.fireShots > 0 ? SPRITES[p.team].fire : SPRITES[p.team].norm;
   if (p.dunk) return s.shoot[1]; // full-extension slam pose for the whole flight
   if (p.shootT > 0) return s.shoot[p.shootT > 0.3 ? 0 : 1]; // windup, then release
   if (!p.grounded || p.jumpT > 0) return s.jump[0];
