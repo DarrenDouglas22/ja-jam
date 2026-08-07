@@ -1219,6 +1219,67 @@ function rrect(x, y, w, h, r) {
   ctx.closePath();
 }
 
+// ---- UI chrome helpers: chunky panels + buttons with hard shadows
+function drawPanel(x, y, w, h, border, r) {
+  r = r || 12;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  rrect(x, y + 5, w, h, r); ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, '#1C1826'); g.addColorStop(1, '#100D18');
+  ctx.fillStyle = g;
+  rrect(x, y, w, h, r); ctx.fill();
+  ctx.strokeStyle = border || '#EE6723'; ctx.lineWidth = 3;
+  rrect(x, y, w, h, r); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x + r, y + 3.5); ctx.lineTo(x + w - r, y + 3.5); ctx.stroke();
+  ctx.restore();
+}
+function drawBtn(rct, label, opts) {
+  opts = opts || {};
+  const { x, y, w, h } = rct;
+  const v = opts.variant || 'menu', sel = !!opts.sel;
+  let fill, border, txt;
+  if (v === 'primary') { fill = ['#00B052', '#007A36']; border = '#FED100'; txt = '#FFFFFF'; }
+  else if (v === 'ghost') { fill = ['rgba(22,22,30,0.85)', 'rgba(14,14,20,0.85)']; border = 'rgba(154,176,200,0.55)'; txt = '#9AB0C8'; }
+  else if (sel) { fill = ['#FF8438', '#E05A10']; border = '#FFE3C4'; txt = '#FFFFFF'; }
+  else { fill = ['#FFF6E8', '#F5DFC0']; border = '#E85D04'; txt = '#9A3412'; }
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  rrect(x, y + 4, w, h, 10); ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, fill[0]); g.addColorStop(1, fill[1]);
+  ctx.fillStyle = g;
+  rrect(x, y, w, h, 10); ctx.fill();
+  ctx.strokeStyle = border; ctx.lineWidth = 3;
+  rrect(x, y, w, h, 10); ctx.stroke();
+  ctx.font = opts.font || 'bold 18px Arial, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (v !== 'ghost') {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillText(label, x + w / 2, y + h / 2 + 2);
+  }
+  ctx.fillStyle = txt;
+  ctx.fillText(label, x + w / 2, y + h / 2);
+  ctx.restore();
+}
+function drawLogo(cx, cy, size) {
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '900 ' + size + 'px Arial, sans-serif';
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = '#00541F';
+  ctx.fillText('JA JAM', cx + size * 0.06, cy + size * 0.08);
+  ctx.lineWidth = size * 0.14;
+  ctx.strokeStyle = '#120D06';
+  ctx.strokeText('JA JAM', cx, cy);
+  const g = ctx.createLinearGradient(0, cy - size * 0.5, 0, cy + size * 0.5);
+  g.addColorStop(0, '#FFE95C'); g.addColorStop(0.55, '#FED100'); g.addColorStop(1, '#EE6723');
+  ctx.fillStyle = g;
+  ctx.fillText('JA JAM', cx, cy);
+  ctx.restore();
+}
+
 // ============================================================ render
 function render() {
   ctx.clearRect(0, 0, W, H);
@@ -1272,20 +1333,8 @@ function renderPause() {
   ctx.fillStyle = '#FFD700';
   ctx.fillText('PAUSED', CX, 190);
 
-  const r = resumeRect(), q = quitRect();
-  ctx.fillStyle = '#009B3A';
-  rrect(r.x, r.y, r.w, r.h, 10); ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#FFD700';
-  ctx.stroke();
-  ctx.font = 'bold 17px Arial, sans-serif';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('RESUME', r.x + r.w / 2, r.y + r.h / 2);
-  ctx.strokeStyle = 'rgba(154,176,200,0.7)';
-  ctx.lineWidth = 2;
-  rrect(q.x, q.y, q.w, q.h, 10); ctx.stroke();
-  ctx.fillStyle = '#9AB0C8';
-  ctx.fillText('QUIT  [Q]', q.x + q.w / 2, q.y + q.h / 2);
+  drawBtn(resumeRect(), 'RESUME', { variant: 'primary' });
+  drawBtn(quitRect(), 'QUIT  [Q]', { variant: 'ghost' });
 
   ctx.font = '13px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
@@ -1815,42 +1864,52 @@ function renderBall() {
 function renderHUD() {
   ctx.textBaseline = 'middle';
   if (mode === 'practice') {
-    // shootaround scoreboard: PERCENT + STREAK instead of score/clock
+    // shootaround scoreboard plate
+    drawPanel(CX - 190, 14, 380, 52, '#EE6723');
     const pct = prac.attempts ? Math.round(prac.makes * 100 / prac.attempts) + '%' : '--';
-    ctx.font = 'bold 30px "Courier New", monospace';
+    ctx.font = 'bold 26px "Courier New", monospace';
     ctx.textAlign = 'left';
     ctx.fillStyle = '#FED100';
-    ctx.fillText('PCT ' + pct, 48, 42);
+    ctx.fillText('PCT ' + pct, CX - 170, 41);
     ctx.textAlign = 'right';
     ctx.fillStyle = '#EE6723';
-    ctx.fillText('STREAK ' + players[0].streak, W - 48, 42);
+    ctx.fillText('STK ' + players[0].streak, CX + 170, 41);
     ctx.textAlign = 'center';
-    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.font = 'bold 13px "Courier New", monospace';
     ctx.fillStyle = '#9AB0C8';
-    ctx.fillText('PRACTICE', CX, 42);
+    ctx.fillText('PRACTICE', CX, 41);
   } else {
-  // scores: drawn flags + ASCII text (emoji inside aligned strings clips on mobile)
-  const FW = 30, FH = 19, FY = 42 - FH / 2;
-  drawJamFlag(48, FY, FW, FH);
-  (TEAMS[1].drawFlag || drawBahFlag)(W - 48 - FW, FY, FW, FH);
-  ctx.font = 'bold 30px "Courier New", monospace';
+  // hanging scoreboard: team plates + clock plate
+  drawPanel(30, 16, 216, 48, shade(TEAMS[0].main, 0.15), 10);
+  drawPanel(W - 246, 16, 216, 48, shade(TEAMS[1].main, 0.15), 10);
+  drawPanel(CX - 74, 10, 148, 58, '#EE6723', 10);
+  const FW = 34, FH = 22;
+  drawJamFlag(42, 40 - FH / 2, FW, FH);
+  (TEAMS[1].drawFlag || drawBahFlag)(W - 42 - FW, 40 - FH / 2, FW, FH);
+  ctx.font = 'bold 27px "Courier New", monospace';
   ctx.textAlign = 'left';
   ctx.fillStyle = TEAMS[0].accent;
-  ctx.fillText(TEAMS[0].abbr + '  ' + scores[0], 48 + FW + 10, 42);
+  ctx.fillText(TEAMS[0].abbr, 42 + FW + 10, 41);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(String(scores[0]), 236, 41);
   ctx.textAlign = 'right';
   ctx.fillStyle = TEAMS[1].accent;
-  ctx.fillText(scores[1] + '  ' + TEAMS[1].abbr, W - 48 - FW - 10, 42);
-  // timer
+  ctx.fillText(TEAMS[1].abbr, W - 42 - FW - 10, 41);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(String(scores[1]), W - 236, 41);
+  // clock
   ctx.textAlign = 'center';
-  ctx.font = 'bold 34px "Courier New", monospace';
+  ctx.font = 'bold 32px "Courier New", monospace';
   if (suddenDeath) {
     ctx.fillStyle = '#FF5050';
-    ctx.fillText('OT', CX, 42);
+    ctx.fillText('OT', CX, 40);
   } else {
     const t = Math.ceil(timeLeft);
     const mm = Math.floor(t / 60), ss = ('0' + (t % 60)).slice(-2);
     ctx.fillStyle = timeLeft <= 10 ? '#FF5050' : '#FFFFFF';
-    ctx.fillText(mm + ':' + ss, CX, 42);
+    ctx.fillText(mm + ':' + ss, CX, 40);
   }
   }
   // fire indicators
@@ -1913,7 +1972,7 @@ function boardRect()    { return { x: CX + 10, y: 428, w: 205, h: 34 }; }
 function goRect()       { return { x: CX - 150, y: 356, w: 140, h: 42 }; }
 function skipRect()     { return { x: CX + 10, y: 356, w: 140, h: 42 }; }
 function overPlayRect() { return { x: CX - 100, y: 268, w: 200, h: 46 }; }
-function pauseBtnRect() { return { x: CX - 24, y: 56, w: 48, h: 26 }; }
+function pauseBtnRect() { return { x: CX - 24, y: 76, w: 48, h: 26 }; }
 function resumeRect()   { return { x: CX - 215, y: 300, w: 205, h: 46 }; }
 function quitRect()     { return { x: CX + 10, y: 300, w: 205, h: 46 }; }
 
@@ -2193,64 +2252,38 @@ function drawUsaFlag(x, y, w, h) { // seven visible stripes, starred canton
 
 function renderTitle() {
   renderStripes();
+  drawLogo(CX, 104, 88);
 
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = 'bold 64px Arial, sans-serif';
-  ctx.fillStyle = '#FFD700';
-  ctx.fillText('JA JAM', CX, 108);
-
-  // matchup: centered ASCII text + canvas-drawn flags (identical on every platform)
+  // matchup: centered ASCII text + drawn flags (identical on every platform)
   ctx.font = 'bold 19px Arial, sans-serif';
   ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const matchup = 'JAMAICA  vs  ' + TEAMS[1].full.replace('TEAM ', '');
-  ctx.fillText(matchup, CX, 176);
+  ctx.fillText(matchup, CX, 178);
   const half = ctx.measureText(matchup).width / 2;
   const fw = 27, fh = 17;
-  drawJamFlag(CX - half - 9 - fw, 176 - fh / 2, fw, fh);
-  (TEAMS[1].drawFlag || drawBahFlag)(CX + half + 9, 176 - fh / 2, fw, fh);
+  drawJamFlag(CX - half - 9 - fw, 178 - fh / 2, fw, fh);
+  (TEAMS[1].drawFlag || drawBahFlag)(CX + half + 9, 178 - fh / 2, fw, fh);
 
-  // vertical menu: arrows + Enter, tap, or touch D-pad + action button
-  ctx.textBaseline = 'middle';
-  MENU.forEach((m, i) => {
-    const r = menuRect(i);
-    const sel = i === menuSel;
-    if (sel) {
-      ctx.fillStyle = 'rgba(0,155,58,0.55)';
-      rrect(r.x, r.y, r.w, r.h, 9); ctx.fill();
-      ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3;
-    } else {
-      ctx.strokeStyle = 'rgba(154,176,200,0.55)'; ctx.lineWidth = 2;
-    }
-    rrect(r.x, r.y, r.w, r.h, 9); ctx.stroke();
-    ctx.font = 'bold 18px Arial, sans-serif';
-    ctx.fillStyle = sel ? '#FFFFFF' : '#9AB0C8';
-    ctx.textAlign = 'center';
-    ctx.fillText(m.label(), r.x + r.w / 2, r.y + r.h / 2);
-    if (sel) { // BACKCOURT-orange selection carets
-      ctx.fillStyle = '#EE6723';
-      ctx.font = 'bold 18px "Courier New", monospace';
-      const blink = Math.floor(tGlobal * 3) % 2 ? '>' : '»';
-      ctx.textAlign = 'right'; ctx.fillText(blink, r.x - 8, r.y + r.h / 2);
-      ctx.textAlign = 'left'; ctx.fillText(blink === '>' ? '<' : '«', r.x + r.w + 8, r.y + r.h / 2);
-    }
-  });
-  ctx.textAlign = 'center';
   ctx.font = '12px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
   const touchOn = getComputedStyle(touchPanel).display !== 'none';
   ctx.fillText(touchOn ? 'd-pad moves - SHOOT selects' : 'arrows move - ENTER selects', CX, 208);
 
-  // how-to-play + leaderboard buttons
-  ctx.strokeStyle = 'rgba(154,176,200,0.7)';
-  ctx.lineWidth = 2;
-  ctx.font = '14px "Courier New", monospace';
-  ctx.fillStyle = '#9AB0C8';
-  const hb = helpRect();
-  rrect(hb.x, hb.y, hb.w, hb.h, 9); ctx.stroke();
-  ctx.fillText('HOW TO PLAY  [H]', hb.x + hb.w / 2, hb.y + hb.h / 2);
-  const lb = boardRect();
-  rrect(lb.x, lb.y, lb.w, lb.h, 9); ctx.stroke();
-  ctx.fillText('LEADERBOARD  [L]', lb.x + lb.w / 2, lb.y + lb.h / 2);
+  MENU.forEach((m, i) => {
+    const r = menuRect(i);
+    const sel = i === menuSel;
+    drawBtn(r, m.label(), { sel });
+    if (sel) {
+      ctx.fillStyle = '#FED100';
+      ctx.font = 'bold 20px "Courier New", monospace';
+      ctx.textAlign = 'right'; ctx.fillText('>', r.x - 10, r.y + r.h / 2);
+      ctx.textAlign = 'left'; ctx.fillText('<', r.x + r.w + 10, r.y + r.h / 2);
+    }
+  });
+
+  drawBtn(helpRect(), 'HOW TO PLAY  [H]', { variant: 'ghost', font: '13px "Courier New", monospace' });
+  drawBtn(boardRect(), 'LEADERBOARD  [L]', { variant: 'ghost', font: '13px "Courier New", monospace' });
 }
 
 function renderHelp() {
@@ -2295,6 +2328,7 @@ const BC_ORANGE = '#EE6723';
 function renderDynastyIntro() {
   ctx.fillStyle = '#0B0B0C'; ctx.fillRect(0, 0, W, H);
   renderStripes();
+  drawPanel(CX - 330, 44, 660, 424, '#EE6723', 16);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = 'bold 54px Arial, sans-serif';
   ctx.fillStyle = '#FED100';
@@ -2329,6 +2363,7 @@ function renderDynastyIntro() {
 function renderMatchup() {
   ctx.fillStyle = '#0B0B0C'; ctx.fillRect(0, 0, W, H);
   renderStripes();
+  drawPanel(CX - 300, 64, 600, 366, '#EE6723', 16);
   const t = dynTeam();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
@@ -2357,28 +2392,18 @@ function renderMatchup() {
     ctx.fillText('THE GOLD-MEDAL FINAL', CX, 280);
   }
 
-  const b = matchupPlayRect();
-  ctx.fillStyle = '#009B3A';
-  rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
-  ctx.lineWidth = 3; ctx.strokeStyle = '#FED100'; ctx.stroke();
-  ctx.font = 'bold 18px Arial, sans-serif';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('TIP OFF', CX, b.y + b.h / 2);
+  drawBtn(matchupPlayRect(), 'TIP OFF', { variant: 'primary' });
   ctx.font = '12px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
-  ctx.fillText('(or press Enter)', CX, b.y + b.h + 18);
-
-  const bk = matchupBackRect();
-  ctx.strokeStyle = 'rgba(154,176,200,0.7)'; ctx.lineWidth = 2;
-  rrect(bk.x, bk.y, bk.w, bk.h, 8); ctx.stroke();
-  ctx.font = '13px "Courier New", monospace';
-  ctx.fillStyle = '#9AB0C8';
-  ctx.fillText('< BACK [ESC]', bk.x + bk.w / 2, bk.y + bk.h / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('(or press Enter)', CX, matchupPlayRect().y + 64);
+  drawBtn(matchupBackRect(), '< BACK [ESC]', { variant: 'ghost', font: '13px "Courier New", monospace' });
 }
 
 function renderDynastyOver() {
-  ctx.fillStyle = 'rgba(11,11,12,0.92)';
+  ctx.fillStyle = 'rgba(8,8,10,0.82)';
   ctx.fillRect(0, 0, W, H);
+  drawPanel(CX - 270, 62, 540, 310, '#EE6723', 16);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const won = dynResult === 'win';
   ctx.font = 'bold 40px Arial, sans-serif';
@@ -2467,12 +2492,7 @@ function renderHoops() {
     }
   });
 
-  const bk = hoopsBackRect();
-  ctx.strokeStyle = 'rgba(154,176,200,0.7)'; ctx.lineWidth = 2;
-  rrect(bk.x, bk.y, bk.w, bk.h, 8); ctx.stroke();
-  ctx.font = '13px "Courier New", monospace';
-  ctx.fillStyle = '#9AB0C8';
-  ctx.fillText('< BACK [ESC]', bk.x + bk.w / 2, bk.y + bk.h / 2);
+  drawBtn(hoopsBackRect(), '< BACK [ESC]', { variant: 'ghost', font: '13px "Courier New", monospace' });
 
   ctx.font = '12px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
@@ -2546,14 +2566,7 @@ function renderWin() {
     ctx.fillStyle = '#9AB0C8';
     ctx.fillText('lose and it posts to the leaderboard', CX, 238);
     const b = overPlayRect();
-    ctx.fillStyle = team.main;
-    rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = team.accent;
-    ctx.stroke();
-    ctx.font = 'bold 18px Arial, sans-serif';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('PLAY AGAIN', CX, b.y + b.h / 2);
+    drawBtn(b, 'PLAY AGAIN', { variant: 'primary' });
     ctx.font = '13px "Courier New", monospace';
     ctx.fillStyle = '#9AB0C8';
     ctx.fillText('(or press Enter)', CX, b.y + b.h + 20);
@@ -2655,15 +2668,7 @@ function renderBoard() {
     ctx.textAlign = 'center';
   }
 
-  const b = playAgainRect();
-  ctx.fillStyle = '#009B3A';
-  rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#FFD700';
-  ctx.stroke();
-  ctx.font = 'bold 17px Arial, sans-serif';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('PLAY', CX, b.y + b.h / 2);
+  drawBtn(playAgainRect(), 'PLAY', { variant: 'primary' });
   if (!Leaderboard.isLive) {
     ctx.font = '11px "Courier New", monospace';
     ctx.fillStyle = '#9AB0C8';
