@@ -1919,8 +1919,7 @@ function renderTitle() {
   ctx.font = '12px "Courier New", monospace';
   ctx.fillStyle = '#9AB0C8';
   const touchOn = getComputedStyle(touchPanel).display !== 'none';
-  const lastR = menuRect(MENU.length - 1);
-  ctx.fillText(touchOn ? 'd-pad moves - SHOOT selects' : 'arrows move - ENTER selects', CX, lastR.y + lastR.h + 22);
+  ctx.fillText(touchOn ? 'd-pad moves - SHOOT selects' : 'arrows move - ENTER selects', CX, 208);
 
   // how-to-play + leaderboard buttons
   ctx.strokeStyle = 'rgba(154,176,200,0.7)';
@@ -1954,14 +1953,16 @@ function renderHelp() {
     'No ball? Crowd the carrier and press SPACE to STEAL',
     'Jump into a rising shot to BLOCK it (fire is unblockable)',
     'Inside the arc: jump + shoot = DUNK (denied if the D is in the lane)',
-    'Win and the next CPU comes back sharper (CPU - Lv.' + (cpuLevel + 1) + ')',
+    'ARCADE: rotating FIBA opponents — win and the CPU sharpens (Lv.' + (cpuLevel + 1) + ')',
+    'DYNASTY: 15 games, qualifiers to Olympic gold — wins unlock hoops',
+    'PRACTICE: empty court, live shooting percentage',
   ];
-  lines.forEach((ln, i) => ctx.fillText(ln, CX, 150 + i * 25));
+  lines.forEach((ln, i) => ctx.fillText(ln, CX, 142 + i * 24));
 
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 20px Arial, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
-  ctx.fillText('PRESS ANY KEY FOR THE MENU', CX, 400);
+  ctx.fillText('PRESS ANY KEY FOR THE MENU', CX, 434);
 }
 
 function playAgainRect() { return { x: CX - 100, y: 392, w: 200, h: 42 }; }
