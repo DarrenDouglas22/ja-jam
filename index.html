@@ -94,7 +94,7 @@ const TEAMS = [
   { abbr: 'JAM', full: 'TEAM JAMAICA', playerName: 'GIOVANNI', names: JAM_NAMES,
     main: '#009B3A', accent: '#FFD700' },
   { abbr: 'BAH', full: 'TEAM BAHAMAS', playerName: 'BUDDY', names: BAH_NAMES,
-    main: '#00778B', accent: '#FAD44D' },
+    main: '#00778B', accent: '#FAD44D', drawFlag: drawBahFlag },
 ];
 
 const CONTROLS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', action: 'Space' }; // P1 only — P2 is CPU
@@ -243,13 +243,92 @@ const SPRITES = [
   makeSpriteSet(1, '#8D5524', 'hitop'),  // opponent slot — regenerated per game via setOpponent
 ];
 
-// ============================================================ opponent slot
-// TEAMS[1] is the mutable opponent slot; ROSTER is the source of truth it's
-// filled from (expanded to the full FIBA field in the team-table section).
+// ============================================================ FIBA opponent roster
+// TEAMS[1] is the mutable opponent slot; ROSTER is the source of truth it's filled
+// from. pool: 'carib' (dynasty qualifiers draw) | 'world' (world-cup draw) |
+// 'oly' (Olympic lock — CAN/GER/FRA shuffle into games 12-14, USA is always the final).
+// base = dynasty CPU level. Flags are drawn helpers (declared later, hoisted).
 const ROSTER = [
-  { id: 'BAH', abbr: 'BAH', full: 'TEAM BAHAMAS', names: BAH_NAMES,
-    main: '#00778B', accent: '#FAD44D', skin: '#8D5524', hair: 'hitop', base: 3 },
+  // --- Caribbean pool (qualifiers draw 5 of 6)
+  { id: 'GUY', abbr: 'GUY', full: 'TEAM GUYANA', pool: 'carib', base: 0, drawFlag: drawGuyFlag,
+    main: '#009E49', accent: '#FCD116', skin: '#5C3317', hair: 'locs',
+    names: ['STANTON', 'SHANE', 'AKEEM', 'RYAN', 'DOMINIC', 'KEVON', 'TIMOTHY', 'ANTHONY'] }, // thin federation data — verify
+  { id: 'ISV', abbr: 'ISV', full: 'TEAM USVI', pool: 'carib', base: 1, drawFlag: drawIsvFlag,
+    main: '#0033A0', accent: '#FFD34D', skin: '#5C3317', hair: 'hitop',
+    names: ['WALTER', 'EARL', 'GEORGIO', 'TRIVANTE', 'AUBREY', 'JALAL', 'KYLE', 'LARON', 'KWAME', 'JAMAAL'] },
+  { id: 'CUB', abbr: 'CUB', full: 'TEAM CUBA', pool: 'carib', base: 2, drawFlag: drawCubFlag,
+    main: '#CF142B', accent: '#FFFFFF', skin: '#8D5524', hair: 'none',
+    names: ['KAREL', 'JASIEL', 'REYNALDO', 'KEVIN', 'MARCOS', 'PEDRO', 'BRAYAN', 'ARIEL', 'MARLON', 'SIGFREDO'] },
+  { id: 'BAH', abbr: 'BAH', full: 'TEAM BAHAMAS', pool: 'carib', base: 3, drawFlag: drawBahFlag,
+    main: '#00778B', accent: '#FAD44D', skin: '#8D5524', hair: 'hitop',
+    names: BAH_NAMES },
+  { id: 'DOM', abbr: 'DOM', full: 'TEAM DOM REP', pool: 'carib', base: 4, drawFlag: drawDomFlag,
+    main: '#002D62', accent: '#CE1126', skin: '#8D5524', hair: 'hitop',
+    names: ['KARL', 'JEAN', 'ANDRES', 'DAVID', 'ANGEL', 'JOEL', 'ELOY', 'GELVIS', 'VICTOR', 'JASSEL'] },
+  { id: 'PUR', abbr: 'PUR', full: 'TEAM PUERTO RICO', pool: 'carib', base: 5, drawFlag: drawPurFlag,
+    main: '#0050F0', accent: '#FFFFFF', skin: '#C68642', hair: 'none',
+    names: ['JOSE', 'GIAN', 'GARY', 'GEORGE', 'ISMAEL', 'ISAIAH', 'ALFONSO', 'ARNALDO', 'IVAN', 'JORDAN'] },
+  // --- World Cup pool (dynasty draws 6 of 15)
+  { id: 'PHI', abbr: 'PHI', full: 'TEAM PILIPINAS', pool: 'world', base: 6, drawFlag: drawPhiFlag,
+    main: '#0038A8', accent: '#FCD116', skin: '#C68642', hair: 'none',
+    names: ['JORDAN', 'KAI', 'DWIGHT', 'SCOTTIE', 'JAPETH', 'KIEFER', 'CJ', 'CALVIN', 'JUNE', 'AJ'] },
+  { id: 'MEX', abbr: 'MEX', full: 'TEAM MEXICO', pool: 'world', base: 6, drawFlag: drawMexFlag,
+    main: '#006847', accent: '#FFFFFF', skin: '#C68642', hair: 'none',
+    names: ['JUAN', 'GABRIEL', 'FRANCISCO', 'ORLANDO', 'JOSHUA', 'FABIAN', 'PACO', 'MOISES'] },
+  { id: 'CHN', abbr: 'CHN', full: 'TEAM CHINA', pool: 'world', base: 7, drawFlag: drawChnFlag,
+    main: '#DE2910', accent: '#FFDE00', skin: '#E8B98A', hair: 'none',
+    names: ['ZHOU', 'ZHAO', 'HU', 'ZHANG', 'CUI', 'WANG', 'YANG', 'SUN'] },
+  { id: 'SSD', abbr: 'SSD', full: 'TEAM SOUTH SUDAN', pool: 'world', base: 7, drawFlag: drawSsdFlag,
+    main: '#0F47AF', accent: '#FCDD09', skin: '#3B2219', hair: 'none',
+    names: ['CARLIK', 'MARIAL', 'WENYEN', 'NUNI', 'BUL', 'KHAMAN', 'MAJOK', 'PETER'] },
+  { id: 'FIN', abbr: 'FIN', full: 'TEAM FINLAND', pool: 'world', base: 8, drawFlag: drawFinFlag,
+    main: '#002F6C', accent: '#FFFFFF', skin: '#F1C27D', hair: 'none',
+    names: ['LAURI', 'MIIKKA', 'SASU', 'OLIVIER', 'MIKAEL', 'ELIAS', 'EDON', 'JACOB'] },
+  { id: 'TUR', abbr: 'TUR', full: 'TEAM TURKIYE', pool: 'world', base: 8, drawFlag: drawTurFlag,
+    main: '#E30A17', accent: '#FFFFFF', skin: '#E0AC69', hair: 'none',
+    names: ['ALPEREN', 'CEDI', 'FURKAN', 'SHANE', 'ADEM', 'OMER', 'KENAN', 'SERTAC'] },
+  { id: 'BRA', abbr: 'BRA', full: 'TEAM BRAZIL', pool: 'world', base: 9, drawFlag: drawBraFlag,
+    main: '#FFDF00', accent: '#009C3B', skin: '#C68642', hair: 'none',
+    names: ['BRUNO', 'YAGO', 'VITOR', 'GUI', 'RAUL', 'LEO', 'CRISTIANO', 'MARCIO'] },
+  { id: 'GRE', abbr: 'GRE', full: 'TEAM GREECE', pool: 'world', base: 9, drawFlag: drawGreFlag,
+    main: '#0D5EAF', accent: '#FFFFFF', skin: '#E0AC69', hair: 'none',
+    names: ['GIANNIS', 'KOSTAS', 'THANASIS', 'NICK', 'DIMITRIOS', 'VASILIS', 'GEORGIOS', 'PANAGIOTIS'] },
+  { id: 'SLO', abbr: 'SLO', full: 'TEAM SLOVENIA', pool: 'world', base: 10, drawFlag: drawSloFlag,
+    main: '#005CE5', accent: '#FFFFFF', skin: '#F1C27D', hair: 'none',
+    names: ['LUKA', 'KLEMEN', 'VLATKO', 'MIKE', 'ZORAN', 'GREGOR', 'ALEKSEJ', 'EDO'] },
+  { id: 'LAT', abbr: 'LAT', full: 'TEAM LATVIA', pool: 'world', base: 10, drawFlag: drawLatFlag,
+    main: '#9E3039', accent: '#FFFFFF', skin: '#F1C27D', hair: 'none',
+    names: ['KRISTAPS', 'DAVIS', 'DAIRIS', 'ARTURS', 'RODIONS', 'ANDREJS', 'ROLANDS', 'KRISTERS'] },
+  { id: 'LTU', abbr: 'LTU', full: 'TEAM LITHUANIA', pool: 'world', base: 10, drawFlag: drawLtuFlag,
+    main: '#006A44', accent: '#FDB913', skin: '#F1C27D', hair: 'none',
+    names: ['JONAS', 'DOMANTAS', 'ROKAS', 'MINDAUGAS', 'IGNAS', 'TADAS', 'MARIUS', 'DEIVIDAS'] },
+  { id: 'ARG', abbr: 'ARG', full: 'TEAM ARGENTINA', pool: 'world', base: 11, drawFlag: drawArgFlag,
+    main: '#74ACDF', accent: '#FFFFFF', skin: '#E0AC69', hair: 'none',
+    names: ['FACUNDO', 'GABRIEL', 'NICOLAS', 'LEANDRO', 'LUCA', 'JUAN', 'MARCOS', 'GONZALO'] },
+  { id: 'ESP', abbr: 'ESP', full: 'TEAM SPAIN', pool: 'world', base: 11, drawFlag: drawEspFlag,
+    main: '#AA151B', accent: '#F1BF00', skin: '#E0AC69', hair: 'none',
+    names: ['SANTI', 'WILLY', 'JUANCHO', 'LORENZO', 'DARIO', 'SERGIO', 'ALEX', 'JAIME'] },
+  { id: 'AUS', abbr: 'AUS', full: 'TEAM AUSTRALIA', pool: 'world', base: 11, drawFlag: drawAusFlag,
+    main: '#00843D', accent: '#FFCD00', skin: '#E0AC69', hair: 'none',
+    names: ['PATTY', 'JOSH', 'JOCK', 'DYSON', 'MATISSE', 'DANTE', 'JOE', 'DUOP'] },
+  { id: 'SRB', abbr: 'SRB', full: 'TEAM SERBIA', pool: 'world', base: 11, drawFlag: drawSrbFlag,
+    main: '#0C4076', accent: '#C6363C', skin: '#F1C27D', hair: 'none',
+    names: ['NIKOLA', 'BOGDAN', 'VASILIJE', 'ALEKSA', 'MARKO', 'FILIP', 'OGNJEN', 'VANJA'] },
+  // --- Olympic lock (games 12-14 shuffled, USA always the gold-medal final)
+  { id: 'CAN', abbr: 'CAN', full: 'TEAM CANADA', pool: 'oly', base: 12, drawFlag: drawCanFlag,
+    main: '#D80621', accent: '#FFFFFF', skin: '#8D5524', hair: 'hitop',
+    names: ['SHAI', 'JAMAL', 'RJ', 'DILLON', 'LUGUENTZ', 'KELLY', 'NICKEIL', 'ANDREW'] },
+  { id: 'GER', abbr: 'GER', full: 'TEAM GERMANY', pool: 'oly', base: 13, drawFlag: drawGerFlag,
+    main: '#F2F2F2', accent: '#FFCE00', skin: '#E0AC69', hair: 'none',
+    names: ['DENNIS', 'FRANZ', 'MORITZ', 'DANIEL', 'ANDI', 'ISAAC', 'MAODO', 'JOHANNES'] },
+  { id: 'FRA', abbr: 'FRA', full: 'TEAM FRANCE', pool: 'oly', base: 13, drawFlag: drawFraFlag,
+    main: '#0055A4', accent: '#FFFFFF', skin: '#5C3317', hair: 'none',
+    names: ['VICTOR', 'RUDY', 'EVAN', 'NICOLAS', 'BILAL', 'GUERSCHON', 'ISAIA', 'MATHIAS'] },
+  { id: 'USA', abbr: 'USA', full: 'TEAM USA', pool: 'oly', base: 14, drawFlag: drawUsaFlag,
+    main: '#0A3161', accent: '#FFFFFF', skin: '#8D5524', hair: 'hitop',
+    names: ['LEBRON', 'STEPH', 'KEVIN', 'JAYSON', 'ANTHONY', 'DEVIN', 'JRUE', 'BAM', 'TYRESE', 'JOEL'] },
 ];
+const teamById = id => ROSTER.find(t => t.id === id);
 let lastOppIdx = -1;
 
 function setOpponent(t) {
@@ -1147,7 +1226,7 @@ function renderHUD() {
   // scores: drawn flags + ASCII text (emoji inside aligned strings clips on mobile)
   const FW = 30, FH = 19, FY = 42 - FH / 2;
   drawJamFlag(48, FY, FW, FH);
-  drawBahFlag(W - 48 - FW, FY, FW, FH);
+  (TEAMS[1].drawFlag || drawBahFlag)(W - 48 - FW, FY, FW, FH);
   ctx.font = 'bold 30px "Courier New", monospace';
   ctx.textAlign = 'left';
   ctx.fillStyle = TEAMS[0].accent;
@@ -1252,6 +1331,257 @@ function drawBahFlag(x, y, w, h) { // aqua-gold-aqua bands, black hoist triangle
   ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w * 0.45, y + h / 2); ctx.lineTo(x, y + h); ctx.closePath(); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+
+// --- shared flag primitives (all flags are geometry: emoji metrics differ per platform)
+function flagBorder(x, y, w, h) {
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+}
+function flagStripesH(x, y, w, h, cols) {
+  const n = cols.length;
+  cols.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x, y + h * i / n, w, h / n + 0.6); });
+}
+function flagStripesV(x, y, w, h, cols) {
+  const n = cols.length;
+  cols.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(x + w * i / n, y, w / n + 0.6, h); });
+}
+function flagTri(x, y, w, h, frac, col) { // hoist triangle, apex at frac of the width
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w * frac, y + h / 2); ctx.lineTo(x, y + h);
+  ctx.closePath(); ctx.fill();
+}
+function flagStar(cx, cy, r, col) { // 5-point star
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + i * Math.PI / 5;
+    const rr = i % 2 ? r * 0.45 : r;
+    const px = cx + Math.cos(ang) * rr, py = cy + Math.sin(ang) * rr;
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+// --- Caribbean pool
+function drawGuyFlag(x, y, w, h) { // green field, white-edged golden arrowhead, black-edged red hoist triangle
+  ctx.fillStyle = '#009E49'; ctx.fillRect(x, y, w, h);
+  flagTri(x, y, w, h, 1, '#FFFFFF');
+  flagTri(x, y + 1.5, w, h - 3, 0.95, '#FCD116');
+  flagTri(x, y, w, h, 0.54, '#000000');
+  flagTri(x, y + 2, w, h - 4, 0.47, '#CE1126');
+  flagBorder(x, y, w, h);
+}
+function drawIsvFlag(x, y, w, h) { // white field, gold eagle between blue V and I
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#FFD34D';
+  ctx.fillRect(x + w * 0.44, y + h * 0.28, w * 0.12, h * 0.42); // eagle body
+  ctx.fillRect(x + w * 0.29, y + h * 0.3, w * 0.15, h * 0.16);  // left wing
+  ctx.fillRect(x + w * 0.56, y + h * 0.3, w * 0.15, h * 0.16);  // right wing
+  ctx.strokeStyle = '#0033A0'; ctx.lineWidth = Math.max(1.5, w * 0.045);
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.07, y + h * 0.24); ctx.lineTo(x + w * 0.15, y + h * 0.76); ctx.lineTo(x + w * 0.23, y + h * 0.24);
+  ctx.stroke();
+  ctx.fillStyle = '#0033A0'; ctx.fillRect(x + w * 0.8, y + h * 0.24, Math.max(2, w * 0.055), h * 0.52);
+  flagBorder(x, y, w, h);
+}
+function drawCubFlag(x, y, w, h) { // five blue/white stripes, red hoist triangle, white star
+  flagStripesH(x, y, w, h, ['#002A8F', '#FFFFFF', '#002A8F', '#FFFFFF', '#002A8F']);
+  flagTri(x, y, w, h, 0.45, '#CF142B');
+  flagStar(x + w * 0.15, y + h / 2, h * 0.16, '#FFFFFF');
+  flagBorder(x, y, w, h);
+}
+function drawDomFlag(x, y, w, h) { // white cross, blue/red quarters, tiny center arms
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y, w, h);
+  const bw = w * 0.42, bh = h * 0.37;
+  ctx.fillStyle = '#002D62'; ctx.fillRect(x, y, bw, bh); ctx.fillRect(x + w - bw, y + h - bh, bw, bh);
+  ctx.fillStyle = '#CE1126'; ctx.fillRect(x + w - bw, y, bw, bh); ctx.fillRect(x, y + h - bh, bw, bh);
+  ctx.fillStyle = '#007A3D'; ctx.fillRect(x + w / 2 - 1.5, y + h / 2 - 2.5, 3, 5);
+  flagBorder(x, y, w, h);
+}
+function drawPurFlag(x, y, w, h) { // five red/white stripes, blue hoist triangle, white star
+  flagStripesH(x, y, w, h, ['#ED0000', '#FFFFFF', '#ED0000', '#FFFFFF', '#ED0000']);
+  flagTri(x, y, w, h, 0.5, '#0050F0');
+  flagStar(x + w * 0.16, y + h / 2, h * 0.16, '#FFFFFF');
+  flagBorder(x, y, w, h);
+}
+
+// --- World Cup pool
+function drawPhiFlag(x, y, w, h) { // blue over red, white hoist triangle, golden sun
+  ctx.fillStyle = '#0038A8'; ctx.fillRect(x, y, w, h / 2);
+  ctx.fillStyle = '#CE1126'; ctx.fillRect(x, y + h / 2, w, h / 2);
+  flagTri(x, y, w, h, 0.44, '#FFFFFF');
+  ctx.fillStyle = '#FCD116';
+  ctx.beginPath(); ctx.arc(x + w * 0.13, y + h / 2, h * 0.11, 0, Math.PI * 2); ctx.fill();
+  flagBorder(x, y, w, h);
+}
+function drawMexFlag(x, y, w, h) { // green-white-red verticals, eagle emblem
+  flagStripesV(x, y, w, h, ['#006847', '#FFFFFF', '#CE1126']);
+  ctx.fillStyle = '#6B4A2B';
+  ctx.beginPath(); ctx.arc(x + w / 2, y + h * 0.46, h * 0.12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#007A3D'; ctx.fillRect(x + w / 2 - w * 0.07, y + h * 0.6, w * 0.14, h * 0.07);
+  flagBorder(x, y, w, h);
+}
+function drawChnFlag(x, y, w, h) { // red field, one large + four small gold stars
+  ctx.fillStyle = '#DE2910'; ctx.fillRect(x, y, w, h);
+  flagStar(x + w * 0.17, y + h * 0.3, h * 0.17, '#FFDE00');
+  flagStar(x + w * 0.34, y + h * 0.13, h * 0.06, '#FFDE00');
+  flagStar(x + w * 0.4, y + h * 0.28, h * 0.06, '#FFDE00');
+  flagStar(x + w * 0.4, y + h * 0.46, h * 0.06, '#FFDE00');
+  flagStar(x + w * 0.34, y + h * 0.6, h * 0.06, '#FFDE00');
+  flagBorder(x, y, w, h);
+}
+function drawSsdFlag(x, y, w, h) { // black-red-green with white fimbriations, blue triangle, gold star
+  flagStripesH(x, y, w, h, ['#000000', '#DA121A', '#078930']);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(x, y + h / 3 - 1, w, 2); ctx.fillRect(x, y + 2 * h / 3 - 1, w, 2);
+  flagTri(x, y, w, h, 0.45, '#0F47AF');
+  flagStar(x + w * 0.14, y + h / 2, h * 0.14, '#FCDD09');
+  flagBorder(x, y, w, h);
+}
+function drawFinFlag(x, y, w, h) { // white field, blue Nordic cross offset to the hoist
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#002F6C';
+  ctx.fillRect(x + w * 0.28, y, w * 0.16, h);
+  ctx.fillRect(x, y + h * 0.38, w, h * 0.24);
+  flagBorder(x, y, w, h);
+}
+function drawTurFlag(x, y, w, h) { // red field, white crescent and star
+  ctx.fillStyle = '#E30A17'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath(); ctx.arc(x + w * 0.36, y + h / 2, h * 0.28, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#E30A17';
+  ctx.beginPath(); ctx.arc(x + w * 0.42, y + h / 2, h * 0.225, 0, Math.PI * 2); ctx.fill();
+  flagStar(x + w * 0.58, y + h / 2, h * 0.12, '#FFFFFF');
+  flagBorder(x, y, w, h);
+}
+function drawBraFlag(x, y, w, h) { // green field, yellow rhombus, blue globe with band
+  ctx.fillStyle = '#009C3B'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#FFDF00';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.5, y + h * 0.08); ctx.lineTo(x + w * 0.9, y + h * 0.5);
+  ctx.lineTo(x + w * 0.5, y + h * 0.92); ctx.lineTo(x + w * 0.1, y + h * 0.5);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#002776';
+  ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, h * 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2 + h * 0.06, h * 0.22, -2.35, -0.75); ctx.stroke();
+  flagBorder(x, y, w, h);
+}
+function drawGreFlag(x, y, w, h) { // nine blue/white stripes, blue canton with white cross
+  flagStripesH(x, y, w, h, ['#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF']);
+  const cw = w * 0.37, chh = h * 5 / 9;
+  ctx.fillStyle = '#0D5EAF'; ctx.fillRect(x, y, cw, chh);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(x + cw * 0.4, y, cw * 0.2, chh);
+  ctx.fillRect(x, y + chh * 0.4, cw, chh * 0.2);
+  flagBorder(x, y, w, h);
+}
+function drawSloFlag(x, y, w, h) { // white-blue-red, Triglav crest at the hoist seam
+  flagStripesH(x, y, w, h, ['#FFFFFF', '#005CE5', '#ED1C24']);
+  ctx.fillStyle = '#005CE5'; ctx.fillRect(x + w * 0.15, y + h * 0.12, w * 0.12, h * 0.34);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.16, y + h * 0.4); ctx.lineTo(x + w * 0.21, y + h * 0.2); ctx.lineTo(x + w * 0.26, y + h * 0.4);
+  ctx.closePath(); ctx.fill();
+  flagBorder(x, y, w, h);
+}
+function drawLatFlag(x, y, w, h) { // carmine with narrow white band
+  ctx.fillStyle = '#9E3039'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y + h * 0.4, w, h * 0.2);
+  flagBorder(x, y, w, h);
+}
+function drawLtuFlag(x, y, w, h) { // yellow-green-red horizontals
+  flagStripesH(x, y, w, h, ['#FDB913', '#006A44', '#C1272D']);
+  flagBorder(x, y, w, h);
+}
+function drawArgFlag(x, y, w, h) { // celeste-white-celeste, Sun of May
+  flagStripesH(x, y, w, h, ['#74ACDF', '#FFFFFF', '#74ACDF']);
+  ctx.fillStyle = '#F6B40E';
+  ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, h * 0.11, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#F6B40E'; ctx.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4;
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2 + Math.cos(a) * h * 0.13, y + h / 2 + Math.sin(a) * h * 0.13);
+    ctx.lineTo(x + w / 2 + Math.cos(a) * h * 0.19, y + h / 2 + Math.sin(a) * h * 0.19);
+    ctx.stroke();
+  }
+  flagBorder(x, y, w, h);
+}
+function drawEspFlag(x, y, w, h) { // red-yellow-red 1:2:1, crest toward the hoist
+  ctx.fillStyle = '#AA151B'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#F1BF00'; ctx.fillRect(x, y + h * 0.25, w, h * 0.5);
+  ctx.fillStyle = '#AA151B'; ctx.fillRect(x + w * 0.22, y + h * 0.36, w * 0.08, h * 0.28);
+  flagBorder(x, y, w, h);
+}
+function drawAusFlag(x, y, w, h) { // blue field, Union Jack canton, Commonwealth star + Southern Cross
+  ctx.fillStyle = '#00247D'; ctx.fillRect(x, y, w, h);
+  const cw = w * 0.5, chh = h * 0.5;
+  ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = Math.max(1.5, h * 0.09);
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(x + cw, y + chh);
+  ctx.moveTo(x + cw, y); ctx.lineTo(x, y + chh);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + cw / 2, y); ctx.lineTo(x + cw / 2, y + chh);
+  ctx.moveTo(x, y + chh / 2); ctx.lineTo(x + cw, y + chh / 2);
+  ctx.stroke();
+  ctx.strokeStyle = '#CF142B'; ctx.lineWidth = Math.max(1, h * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(x + cw / 2, y); ctx.lineTo(x + cw / 2, y + chh);
+  ctx.moveTo(x, y + chh / 2); ctx.lineTo(x + cw, y + chh / 2);
+  ctx.stroke();
+  flagStar(x + w * 0.25, y + h * 0.76, h * 0.11, '#FFFFFF'); // Commonwealth star
+  flagStar(x + w * 0.79, y + h * 0.22, h * 0.07, '#FFFFFF'); // Southern Cross
+  flagStar(x + w * 0.66, y + h * 0.48, h * 0.06, '#FFFFFF');
+  flagStar(x + w * 0.9, y + h * 0.52, h * 0.06, '#FFFFFF');
+  flagStar(x + w * 0.79, y + h * 0.78, h * 0.07, '#FFFFFF');
+  flagBorder(x, y, w, h);
+}
+function drawSrbFlag(x, y, w, h) { // red-blue-white, small crest toward the hoist
+  flagStripesH(x, y, w, h, ['#C6363C', '#0C4076', '#FFFFFF']);
+  ctx.fillStyle = '#C6363C'; ctx.fillRect(x + w * 0.28, y + h * 0.28, w * 0.11, h * 0.4);
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x + w * 0.305, y + h * 0.38, w * 0.06, h * 0.18);
+  flagBorder(x, y, w, h);
+}
+
+// --- Olympic lock
+function drawCanFlag(x, y, w, h) { // red-white-red verticals, red maple leaf
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#D80621';
+  ctx.fillRect(x, y, w * 0.25, h); ctx.fillRect(x + w * 0.75, y, w * 0.25, h);
+  const lx = x + w / 2, ly = y + h / 2;
+  ctx.beginPath();
+  ctx.moveTo(lx, ly - h * 0.32);
+  ctx.lineTo(lx + w * 0.05, ly - h * 0.1);
+  ctx.lineTo(lx + w * 0.13, ly - h * 0.16);
+  ctx.lineTo(lx + w * 0.1, ly + h * 0.08);
+  ctx.lineTo(lx + w * 0.02, ly + h * 0.06);
+  ctx.lineTo(lx + w * 0.02, ly + h * 0.3);
+  ctx.lineTo(lx - w * 0.02, ly + h * 0.3);
+  ctx.lineTo(lx - w * 0.02, ly + h * 0.06);
+  ctx.lineTo(lx - w * 0.1, ly + h * 0.08);
+  ctx.lineTo(lx - w * 0.13, ly - h * 0.16);
+  ctx.lineTo(lx - w * 0.05, ly - h * 0.1);
+  ctx.closePath(); ctx.fill();
+  flagBorder(x, y, w, h);
+}
+function drawGerFlag(x, y, w, h) { // black-red-gold horizontals
+  flagStripesH(x, y, w, h, ['#000000', '#DD0000', '#FFCE00']);
+  flagBorder(x, y, w, h);
+}
+function drawFraFlag(x, y, w, h) { // blue-white-red verticals
+  flagStripesV(x, y, w, h, ['#0055A4', '#FFFFFF', '#EF4135']);
+  flagBorder(x, y, w, h);
+}
+function drawUsaFlag(x, y, w, h) { // seven visible stripes, starred canton
+  flagStripesH(x, y, w, h, ['#B22234', '#FFFFFF', '#B22234', '#FFFFFF', '#B22234', '#FFFFFF', '#B22234']);
+  ctx.fillStyle = '#3C3B6E'; ctx.fillRect(x, y, w * 0.44, h * 4 / 7);
+  ctx.fillStyle = '#FFFFFF';
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++)
+    ctx.fillRect(x + w * 0.05 + c * w * 0.1, y + h * 0.08 + r * h * 0.15, 1.6, 1.6);
+  flagBorder(x, y, w, h);
 }
 
 function renderTitle() {
