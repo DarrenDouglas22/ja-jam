@@ -83,20 +83,25 @@ const GAME_TIME = 120; // seconds
 const ACCEL = 1600, FRICTION = 5.5, MAX_SPEED = 235, CARRIER_SPEED = 0.88;
 const GRAV = 1500, JUMP_V = 700, BALL_GRAV = 1350; // jump velocity +25% for the bigger sprites
 
+// Real national-roster first names — both slots roll a fresh one every game
+const JAM_NAMES = ['PRINCE', 'JALEN', 'MICAH', 'MARCUS', 'GIOVANNI', 'JORDAN',
+                   'KENTAN', 'ROMAINE', 'JUSTIN', 'SEYI', 'NORMAN', 'ROMARO',
+                   'KOFI', 'CHASE', 'DREW'];
+const BAH_NAMES = ['BUDDY', 'DEANDRE', 'ERIC', 'KAI', 'ISAIAH', 'FRANCO',
+                   'KENTWAN', 'SAMMY', 'DOMINICK', 'GARVIN', 'KINO', 'TAVARIO'];
+
 const TEAMS = [
-  { abbr: 'JAM', full: 'TEAM JAMAICA', flag: '\u{1F1EF}\u{1F1F2}', playerName: 'GIOVANNI',
+  { abbr: 'JAM', full: 'TEAM JAMAICA', playerName: 'GIOVANNI', names: JAM_NAMES,
     main: '#009B3A', accent: '#FFD700' },
-  { abbr: 'BAH', full: 'TEAM BAHAMAS', flag: '\u{1F1E7}\u{1F1F8}', playerName: 'VJ',
+  { abbr: 'BAH', full: 'TEAM BAHAMAS', playerName: 'BUDDY', names: BAH_NAMES,
     main: '#00778B', accent: '#FAD44D' },
 ];
 
 const CONTROLS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', action: 'Space' }; // P1 only — P2 is CPU
 
-// Jamaica roster first names — P1 gets a fresh one every game
-const JAM_NAMES = ['PRINCE', 'JALEN', 'MICAH', 'MARCUS', 'GIOVANNI', 'JORDAN',
-                   'KENTAN', 'ROMAINE', 'JUSTIN', 'SEYI', 'NORMAN', 'ROMARO'];
-const rollJamName = () => { TEAMS[0].playerName = JAM_NAMES[(Math.random() * JAM_NAMES.length) | 0]; };
-rollJamName(); // title screen shows a name before the first game too
+const rollName = t => { t.playerName = t.names[(Math.random() * t.names.length) | 0]; };
+rollName(TEAMS[0]); // title screen shows a name before the first game too
+rollName(TEAMS[1]);
 
 // ============================================================ leaderboard (Supabase)
 const SCORE_CAP = 999; // leaderboard score = session run total across games (arcade 3 digits)
@@ -110,7 +115,7 @@ const Leaderboard = (() => {
   const client = live ? window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY) : null;
   // in-memory mock so the UI runs before the backend is wired (deliberately not localStorage)
   const mock = [
-    { id: 'm1', name: 'VJ',  score: 21, created_at: '2026-07-01T00:00:00Z' },
+    { id: 'm1', name: 'BUD', score: 21, created_at: '2026-07-01T00:00:00Z' },
     { id: 'm2', name: 'JAM', score: 15, created_at: '2026-07-01T00:01:00Z' },
     { id: 'm3', name: 'BAH', score: 9,  created_at: '2026-07-01T00:02:00Z' },
   ];
@@ -242,7 +247,7 @@ const SPRITES = [
 // TEAMS[1] is the mutable opponent slot; ROSTER is the source of truth it's
 // filled from (expanded to the full FIBA field in the team-table section).
 const ROSTER = [
-  { id: 'BAH', abbr: 'BAH', full: 'TEAM BAHAMAS', playerName: 'VJ',
+  { id: 'BAH', abbr: 'BAH', full: 'TEAM BAHAMAS', names: BAH_NAMES,
     main: '#00778B', accent: '#FAD44D', skin: '#8D5524', hair: 'hitop', base: 3 },
 ];
 let lastOppIdx = -1;
@@ -312,8 +317,9 @@ function tipOff() {
 }
 
 function startGame() {
-  rollJamName();
   if (mode === 'arcade') pickArcadeOpponent();
+  rollName(TEAMS[0]); // both slots roll from whoever's pool occupies them
+  rollName(TEAMS[1]);
   scores = [0, 0];
   timeLeft = GAME_TIME;
   suddenDeath = false;
@@ -647,8 +653,8 @@ function trySteal(p) {
   }
 }
 
-// ============================================================ CPU opponent (P2 / VJ)
-// VJ starts rusty and levels up each time Giovanni beats him.
+// ============================================================ CPU opponent (P2)
+// The arcade CPU starts rusty and levels up each time the player beats it.
 let cpuLevel = 0;
 function cpuSkill(level) {
   // Piecewise ramps: identical to the original curve through ~Lv.5, then a gentler
@@ -1330,7 +1336,7 @@ function renderHelp() {
     'No ball? Crowd the carrier and press SPACE to STEAL',
     'Jump into a rising shot to BLOCK it (fire is unblockable)',
     'Inside the arc: jump + shoot = DUNK (denied if the D is in the lane)',
-    'Beat ' + TEAMS[1].playerName + ' and he comes back sharper (CPU · Lv.' + (cpuLevel + 1) + ')',
+    'Win and the next CPU comes back sharper (CPU - Lv.' + (cpuLevel + 1) + ')',
   ];
   lines.forEach((ln, i) => ctx.fillText(ln, CX, 150 + i * 25));
 
@@ -1356,7 +1362,7 @@ function renderWin() {
   if (winner === 0) {
     ctx.font = '14px "Courier New", monospace';
     ctx.fillStyle = '#FF8C00';
-    ctx.fillText('VJ LEVELS UP — Lv.' + (cpuLevel + 1) + ' next game', CX, 172);
+    ctx.fillText(TEAMS[1].playerName + ' LEVELS UP — CPU Lv.' + (cpuLevel + 1) + ' next game', CX, 172);
   }
 
   if (!entryOpen) {
