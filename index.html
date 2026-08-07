@@ -263,6 +263,17 @@ function pickArcadeOpponent() { // random rotation, never the same team twice in
 let state = 'title'; // title | help | playing | paused | over | board (+ dynasty screens)
 let mode = 'arcade'; // arcade | dynasty | practice — how a 'playing' game scores and ends
 let curCpuLevel = 0; // effective CPU level for the game in progress (set at startGame)
+
+// ============================================================ title menu
+// Entries are appended by the sections that implement them (dynasty, practice,
+// hoop styles) so the live site never shows a button for a mode that isn't built.
+const MENU = [
+  { label: () => 'ARCADE', run: () => { mode = 'arcade'; startGame(); } },
+];
+let menuSel = 0;
+const menuRect = i => ({ x: CX - 140, y: 232 + i * 48, w: 280, h: 40 });
+function menuMove(d) { menuSel = (menuSel + d + MENU.length) % MENU.length; }
+function menuActivate() { MENU[menuSel].run(); }
 let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
 let shake = 0; // screen-shake timer (dunks)
 let boardData = null, myFinalScore = 0, myEntry = null, submitting = false; // leaderboard flow
@@ -425,9 +436,12 @@ window.addEventListener('keydown', e => {
     case 'title':
       if (e.code === 'KeyH') { state = 'help'; return; }
       if (e.code === 'KeyL') { openBoard(); return; }
-      startGame(); return;
+      if (e.code === 'ArrowUp') { menuMove(-1); return; }
+      if (e.code === 'ArrowDown') { menuMove(1); return; }
+      if (e.code === 'Enter' || e.code === 'Space') { menuActivate(); return; }
+      return; // the menu is deliberate — stray keys no longer tip off
     case 'help':
-      startGame(); return;
+      state = 'title'; return;
     case 'over':
       if (entryOpen) { if (e.code === 'Enter') submitInitials(); return; } // letters flow into the hidden input
       if (e.code === 'Enter' || e.code === 'Space') startGame();
@@ -462,9 +476,12 @@ canvas.addEventListener('click', e => {
   if (state === 'title') {
     if (hit(helpRect())) { state = 'help'; return; }
     if (hit(boardRect())) { openBoard(); return; }
-    startGame(); return;
+    for (let i = 0; i < MENU.length; i++) {
+      if (hit(menuRect(i))) { menuSel = i; menuActivate(); return; }
+    }
+    return; // tapping empty title space does nothing
   }
-  if (state === 'help') { startGame(); return; }
+  if (state === 'help') { state = 'title'; return; }
   if (state === 'over') {
     if (entryOpen) {
       if (hit(goRect())) { submitInitials(); return; }
@@ -494,13 +511,21 @@ const touchPanel = document.getElementById('touch');
 if (location.search.includes('touch')) touchPanel.classList.add('on');
 window.addEventListener('touchstart', () => touchPanel.classList.add('on'), { once: true, passive: true });
 
-function touchPress(fn) {
+function touchPress(btn, fn) {
   initAudio();
-  if (state === 'playing') { fn(); return; }
-  if (state === 'paused') { state = 'playing'; return; } // any touch button resumes
-  if (state === 'title' || state === 'help' || state === 'board') { startGame(); return; }
-  if (state === 'over') { if (!entryOpen) startGame(); return; } // initials screen: use the on-canvas buttons
-  // unlisted screens ignore touch buttons — new states fail inert
+  switch (state) {
+    case 'playing': fn(); return;
+    case 'paused': state = 'playing'; return; // any touch button resumes
+    case 'title': // D-pad walks the menu, action selects — no accidental tip-offs
+      if (btn === 'L' || btn === 'J') menuMove(-1);
+      else if (btn === 'R') menuMove(1);
+      else if (btn === 'A') menuActivate();
+      return;
+    case 'help': state = 'title'; return;
+    case 'board': startGame(); return;
+    case 'over': if (!entryOpen) startGame(); return; // initials screen: use the on-canvas buttons
+    default: return; // unlisted screens ignore touch buttons — new states fail inert
+  }
 }
 function bindTouch(el, onDown, onUp) {
   el.addEventListener('pointerdown', e => { e.preventDefault(); onDown(); });
@@ -508,15 +533,15 @@ function bindTouch(el, onDown, onUp) {
     el.addEventListener(ev, e => { e.preventDefault(); if (onUp) onUp(); }));
 }
 bindTouch(document.getElementById('tL'),
-  () => touchPress(() => { keys[CONTROLS.left] = true; }),
+  () => touchPress('L', () => { keys[CONTROLS.left] = true; }),
   () => { keys[CONTROLS.left] = false; });
 bindTouch(document.getElementById('tR'),
-  () => touchPress(() => { keys[CONTROLS.right] = true; }),
+  () => touchPress('R', () => { keys[CONTROLS.right] = true; }),
   () => { keys[CONTROLS.right] = false; });
 bindTouch(document.getElementById('tJ'),
-  () => touchPress(() => { if (players[0].grounded) players[0].vy = -JUMP_V; }));
+  () => touchPress('J', () => { if (players[0].grounded) players[0].vy = -JUMP_V; }));
 bindTouch(document.getElementById('tA'),
-  () => touchPress(() => doAction(players[0])));
+  () => touchPress('A', () => doAction(players[0])));
 
 // ============================================================ actions
 function doAction(p) {
@@ -1191,8 +1216,8 @@ function renderStripes() {
   ctx.globalAlpha = 1;
 }
 
-function helpRect()     { return { x: CX - 215, y: 372, w: 205, h: 36 }; }
-function boardRect()    { return { x: CX + 10, y: 372, w: 205, h: 36 }; }
+function helpRect()     { return { x: CX - 215, y: 428, w: 205, h: 34 }; }
+function boardRect()    { return { x: CX + 10, y: 428, w: 205, h: 34 }; }
 function goRect()       { return { x: CX - 150, y: 356, w: 140, h: 42 }; }
 function skipRect()     { return { x: CX + 10, y: 356, w: 140, h: 42 }; }
 function overPlayRect() { return { x: CX - 100, y: 268, w: 200, h: 46 }; }
@@ -1227,24 +1252,51 @@ function renderTitle() {
   renderStripes();
 
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = 'bold 72px Arial, sans-serif';
+  ctx.font = 'bold 64px Arial, sans-serif';
   ctx.fillStyle = '#FFD700';
-  ctx.fillText('JA JAM', CX, 160);
+  ctx.fillText('JA JAM', CX, 108);
 
   // matchup: centered ASCII text + canvas-drawn flags (identical on every platform)
-  ctx.font = 'bold 20px Arial, sans-serif';
+  ctx.font = 'bold 19px Arial, sans-serif';
   ctx.fillStyle = '#FFFFFF';
-  const matchup = 'JAMAICA  vs  BAHAMAS';
-  ctx.fillText(matchup, CX, 240);
+  const matchup = 'JAMAICA  vs  ' + TEAMS[1].full.replace('TEAM ', '');
+  ctx.fillText(matchup, CX, 176);
   const half = ctx.measureText(matchup).width / 2;
   const fw = 27, fh = 17;
-  drawJamFlag(CX - half - 9 - fw, 240 - fh / 2, fw, fh);
-  drawBahFlag(CX + half + 9, 240 - fh / 2, fw, fh);
+  drawJamFlag(CX - half - 9 - fw, 176 - fh / 2, fw, fh);
+  (TEAMS[1].drawFlag || drawBahFlag)(CX + half + 9, 176 - fh / 2, fw, fh);
 
-  const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
-  ctx.font = 'bold 22px Arial, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
-  ctx.fillText('PRESS ANY KEY TO TIP OFF', CX, 320);
+  // vertical menu: arrows + Enter, tap, or touch D-pad + action button
+  ctx.textBaseline = 'middle';
+  MENU.forEach((m, i) => {
+    const r = menuRect(i);
+    const sel = i === menuSel;
+    if (sel) {
+      ctx.fillStyle = 'rgba(0,155,58,0.55)';
+      rrect(r.x, r.y, r.w, r.h, 9); ctx.fill();
+      ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3;
+    } else {
+      ctx.strokeStyle = 'rgba(154,176,200,0.55)'; ctx.lineWidth = 2;
+    }
+    rrect(r.x, r.y, r.w, r.h, 9); ctx.stroke();
+    ctx.font = 'bold 18px Arial, sans-serif';
+    ctx.fillStyle = sel ? '#FFFFFF' : '#9AB0C8';
+    ctx.textAlign = 'center';
+    ctx.fillText(m.label(), r.x + r.w / 2, r.y + r.h / 2);
+    if (sel) { // BACKCOURT-orange selection carets
+      ctx.fillStyle = '#EE6723';
+      ctx.font = 'bold 18px "Courier New", monospace';
+      const blink = Math.floor(tGlobal * 3) % 2 ? '>' : '»';
+      ctx.textAlign = 'right'; ctx.fillText(blink, r.x - 8, r.y + r.h / 2);
+      ctx.textAlign = 'left'; ctx.fillText(blink === '>' ? '<' : '«', r.x + r.w + 8, r.y + r.h / 2);
+    }
+  });
+  ctx.textAlign = 'center';
+  ctx.font = '12px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  const touchOn = getComputedStyle(touchPanel).display !== 'none';
+  const lastR = menuRect(MENU.length - 1);
+  ctx.fillText(touchOn ? 'd-pad moves - SHOOT selects' : 'arrows move - ENTER selects', CX, lastR.y + lastR.h + 22);
 
   // how-to-play + leaderboard buttons
   ctx.strokeStyle = 'rgba(154,176,200,0.7)';
@@ -1285,7 +1337,7 @@ function renderHelp() {
   const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
   ctx.font = 'bold 20px Arial, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
-  ctx.fillText('PRESS ANY KEY TO TIP OFF', CX, 400);
+  ctx.fillText('PRESS ANY KEY FOR THE MENU', CX, 400);
 }
 
 function playAgainRect() { return { x: CX - 100, y: 392, w: 200, h: 42 }; }
