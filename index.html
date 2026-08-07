@@ -702,6 +702,7 @@ function doAction(p) {
 
 // DUNK: airborne inside the arc with a clear lane -> fly to the rim and slam
 function defenderInLane(p) {
+  if (mode === 'practice') return false; // no defender exists to deny
   const opp = players[1 - p.team];
   const x1 = p.x, y1 = p.y, x2 = HOOP.x - 20, y2 = HOOP.y;
   const ddx = x2 - x1, ddy = y2 - y1;
@@ -855,6 +856,23 @@ function cpuUpdate(dt) {
 // ============================================================ scoring / resolution
 function resolveMake(f) {
   const t = f.shooter.team;
+  if (mode === 'practice') {
+    // count it, drop the ball loose under the rim, and keep shooting — no
+    // possession reset, no game end at 21, no fire (PERCENT stays honest)
+    prac.attempts++; prac.makes++;
+    f.shooter.streak++;
+    if (f.dunk) {
+      if (!f.effectsDone) { hoopFlash = 0.6; playDunk(); } // reachRim already set the ball loose
+    } else {
+      hoopFlash = 0.6;
+      playScore();
+      if (f.pts === 3) showBanner('THREE POINTER!', 1.2);
+      ball.mode = 'loose'; ball.flight = null; // resolveMake never writes ball state on the normal path — resetAfterScore does; here we drop it through explicitly
+      ball.x = HOOP.x - 4; ball.y = HOOP.y + 16;
+      ball.vx = -(50 + Math.random() * 70); ball.vy = 80;
+    }
+    return;
+  }
   scores[t] += f.pts;
   if (f.dunk) {
     if (!f.effectsDone) {
@@ -887,6 +905,7 @@ function resolveMake(f) {
 }
 
 function resolveMiss(f) {
+  if (mode === 'practice') prac.attempts++;
   f.shooter.streak = 0;
   playRim();
   // rebound: ball caroms off the front iron back into the court
@@ -997,6 +1016,16 @@ MENU.push({
   run: () => { mode = 'dynasty'; if (dyn && dyn.schedule) continueDynasty(); else newDynasty(); },
 });
 
+// ============================================================ practice
+// Free shootaround: no defender, no clock, no CPU. The opponent isn't parked —
+// it's fully absent (no physics, no rebound pickup, not drawn).
+let prac = { makes: 0, attempts: 0 };
+
+MENU.push({
+  label: () => 'PRACTICE',
+  run: () => { mode = 'practice'; prac = { makes: 0, attempts: 0 }; startGame(); },
+});
+
 // ============================================================ update
 function update(dt) {
   tGlobal += dt;
@@ -1006,13 +1035,15 @@ function update(dt) {
   hoopFlash = Math.max(0, hoopFlash - dt);
   shake = Math.max(0, shake - dt);
 
-  cpuUpdate(dt);
+  if (mode !== 'practice') {
+    cpuUpdate(dt);
+    updatePlayer(players[1], cpu.dir, dt); // absent in practice: the court clamp would drag a "parked" body back in
+  }
   updatePlayer(players[0], (keys[CONTROLS.right] ? 1 : 0) - (keys[CONTROLS.left] ? 1 : 0), dt);
-  updatePlayer(players[1], cpu.dir, dt);
   updateBall(dt);
 
-  // clock
-  if (!suddenDeath) {
+  // clock (frozen in practice)
+  if (!suddenDeath && mode !== 'practice') {
     timeLeft = Math.max(0, timeLeft - dt);
     if (timeLeft <= 0 && ball.mode !== 'flight' && !players[0].dunk && !players[1].dunk) { // let buzzer-beaters resolve
       if (scores[0] === scores[1]) {
@@ -1131,6 +1162,7 @@ function updateBall(dt) {
 
   // pickup on contact
   for (const p of players) {
+    if (mode === 'practice' && p.team === 1) continue; // the absent opponent grabs nothing
     if (Math.hypot(p.x - ball.x, p.y - ball.y) < 40) {
       ball.mode = 'held'; ball.holder = p;
       ball.vx = 0; ball.vy = 0;
@@ -1174,11 +1206,15 @@ function render() {
   const ballH = clamp(1 - (FLOOR - 8 - ball.y) / 300, 0.35, 1);
   renderShadow(ball.x, FLOOR + 4, 10 * ballH + 3, 4, 0.35 * ballH);
   players.forEach(p => {
+    if (mode === 'practice' && p.team === 1) return; // absent opponent casts no shadow
     const k = clamp(1 - (standY(p) - p.y) / 200, 0.45, 1);
     renderShadow(p.x, FLOOR + 5, 26 * k, 7, 0.3 * k);
   });
 
-  players.forEach(renderPlayer);
+  players.forEach(p => {
+    if (mode === 'practice' && p.team === 1) return; // and isn't drawn
+    renderPlayer(p);
+  });
   renderBall();
   renderHoop(); // rim + net render in front of the ball
 
@@ -1382,6 +1418,21 @@ function renderBall() {
 
 function renderHUD() {
   ctx.textBaseline = 'middle';
+  if (mode === 'practice') {
+    // shootaround scoreboard: PERCENT + STREAK instead of score/clock
+    const pct = prac.attempts ? Math.round(prac.makes * 100 / prac.attempts) + '%' : '--';
+    ctx.font = 'bold 30px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#FED100';
+    ctx.fillText('PCT ' + pct, 48, 42);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#EE6723';
+    ctx.fillText('STREAK ' + players[0].streak, W - 48, 42);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.fillStyle = '#9AB0C8';
+    ctx.fillText('PRACTICE', CX, 42);
+  } else {
   // scores: drawn flags + ASCII text (emoji inside aligned strings clips on mobile)
   const FW = 30, FH = 19, FY = 42 - FH / 2;
   drawJamFlag(48, FY, FW, FH);
@@ -1405,6 +1456,7 @@ function renderHUD() {
     ctx.fillStyle = timeLeft <= 10 ? '#FF5050' : '#FFFFFF';
     ctx.fillText(mm + ':' + ss, CX, 42);
   }
+  }
   // fire indicators
   ctx.font = 'bold 13px "Courier New", monospace';
   players.forEach((p, i) => {
@@ -1425,7 +1477,7 @@ function renderHUD() {
   ctx.fillRect(pb.x + 27, pb.y + 7, 4, 12);
 
   // controls legend + contextual touch action label
-  const actLabel = (ball.mode === 'held' && ball.holder === players[0]) ? 'SHOOT' : 'STEAL';
+  const actLabel = mode === 'practice' || (ball.mode === 'held' && ball.holder === players[0]) ? 'SHOOT' : 'STEAL';
   const btnA = document.getElementById('tA');
   if (btnA.textContent !== actLabel) btnA.textContent = actLabel;
   ctx.font = '12px "Courier New", monospace';
