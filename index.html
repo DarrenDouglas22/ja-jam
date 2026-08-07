@@ -155,12 +155,11 @@ const Leaderboard = (() => {
   return { submitScore, fetchTopScores, isLive: live };
 })();
 
-// ============================================================ procedural pixel-art sprites
-// 32x32 big-head figures generated at load into offscreen canvases, drawn at 2x.
-// Per team: idle x2, run x4, jump x1, shoot x2.
-const SPRITE_PX = 32, SPRITE_SCALE = 2, SPRITE_SIZE = SPRITE_PX * SPRITE_SCALE;
+// ============================================================ player looks (big-head cartoon rendering)
+// Players are drawn as smooth vector cartoons every frame — big heads, shaded
+// limbs, outlined shapes (Basket Bros / NBA Jam energy, not pixel art).
+// A "look" is derived per game: team decides the kit, the name decides the face.
 
-// deterministic per-name looks: a given name always gets the same face
 function nameHash(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -168,121 +167,31 @@ function nameHash(s) {
 }
 function faceFor(name) {
   const h = nameHash(name);
-  return { eyes: h % 3, brows: ((h / 3) | 0) % 3, mouth: ((h / 9) | 0) % 3 };
+  return { eyes: h % 3, brows: ((h / 3) | 0) % 3, mouth: ((h / 9) | 0) % 3, num: h % 100 };
 }
 const JAM_SKINS = ['#5C3317', '#8D5524', '#6E4023'];
-const JAM_HAIR = ['locs', 'hitop', 'none'];
+const JAM_HAIR = ['locs', 'fade', 'hitop'];
 
-function makeSpriteSet(teamIdx, skin, hairStyle, face) {
-  const MAIN = TEAMS[teamIdx].main, ACC = TEAMS[teamIdx].accent;
-  const HAIR = '#161616', SHOE = '#F2F2F2', EYE = '#0E0E0E', MOUTH = '#2E1808', SHORTS = '#141414';
-  const F = face || { eyes: 0, brows: 0, mouth: 0 };
-
-  function frame(opts) {
-    const c = document.createElement('canvas');
-    c.width = SPRITE_PX; c.height = SPRITE_PX;
-    const g = c.getContext('2d');
-    const px = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
-    const b = opts.bob || 0; // head bob offset (feet stay planted)
-    const onFire = !!opts.fireFace;
-
-    // --- big head (rows 0..14, +b)
-    px(8, 1 + b, 16, 4, HAIR);                                    // hair cap
-    if (hairStyle === 'hitop') px(9, b, 14, 1, HAIR);             // hi-top fade
-    if (hairStyle === 'locs') { px(6, 5 + b, 1, 6, HAIR); px(25, 5 + b, 1, 6, HAIR); } // side locs
-    px(8, 5 + b, 16, 2, ACC);                                     // headband
-    px(8, 7 + b, 16, 8, skin);                                    // face
-    px(7, 9 + b, 1, 4, skin); px(24, 9 + b, 1, 4, skin);          // ears
-
-    // --- expressive face: brows / eyes / mouth vary per player, snarl when on fire
-    const eyeCol = onFire ? '#E03000' : EYE;
-    if (onFire || F.brows === 2) {                                // angled game-face brows
-      px(11, 9 + b, 3, 1, HAIR); px(18, 9 + b, 3, 1, HAIR);
-      px(13, 10 + b, 1, 1, HAIR); px(18, 10 + b, 1, 1, HAIR);
-    } else if (F.brows === 1) {                                   // flat brows
-      px(11, 9 + b, 3, 1, HAIR); px(18, 9 + b, 3, 1, HAIR);
-    }
-    if (F.eyes === 1) {                                           // narrowed
-      px(12, 11 + b, 2, 1, eyeCol); px(18, 11 + b, 2, 1, eyeCol);
-    } else if (F.eyes === 2) {                                    // wide with whites
-      px(11, 10 + b, 3, 2, '#F4F4F4'); px(18, 10 + b, 3, 2, '#F4F4F4');
-      px(12, 10 + b, 2, 2, eyeCol); px(19, 10 + b, 2, 2, eyeCol);
-    } else {                                                      // classic
-      px(12, 10 + b, 2, 2, eyeCol); px(18, 10 + b, 2, 2, eyeCol);
-    }
-    if (onFire) {                                                 // gritted snarl
-      px(13, 12 + b, 6, 2, '#7A1010'); px(14, 12 + b, 4, 1, '#F4F4F4');
-    } else if (F.mouth === 1) {                                   // grin
-      px(13, 13 + b, 5, 1, MOUTH); px(12, 12 + b, 1, 1, MOUTH); px(18, 12 + b, 1, 1, MOUTH);
-    } else if (F.mouth === 2) {                                   // open (mid-shout)
-      px(14, 12 + b, 3, 2, MOUTH);
-    } else {                                                      // neutral
-      px(14, 13 + b, 4, 1, MOUTH);
-    }
-
-    // --- jersey (rows 15..20)
-    px(10, 15, 12, 1, ACC);                                       // shoulder trim
-    px(10, 16, 12, 5, MAIN);                                      // jersey
-    px(14, 17, 4, 2, ACC);                                        // number blob
-
-    // --- shorts (rows 21..22)
-    px(10, 21, 12, 1, ACC);
-    px(10, 22, 12, 1, SHORTS);
-
-    // --- legs + shoes (rows 23..31)
-    switch (opts.legs) {
-      case 'stand':
-        px(12, 23, 2, 6, skin); px(18, 23, 2, 6, skin);
-        px(11, 29, 4, 3, SHOE); px(17, 29, 4, 3, SHOE);
-        break;
-      case 'together':
-        px(14, 23, 2, 6, skin); px(16, 23, 2, 6, skin);
-        px(13, 29, 4, 3, SHOE); px(16, 29, 4, 3, SHOE);
-        break;
-      case 'runA': // left leg striding, right trailing
-        px(9, 23, 3, 5, skin); px(8, 28, 4, 3, SHOE);
-        px(19, 23, 3, 4, skin); px(20, 26, 4, 3, SHOE);
-        break;
-      case 'runB': // mirror of runA
-        px(20, 23, 3, 5, skin); px(20, 28, 4, 3, SHOE);
-        px(10, 23, 3, 4, skin); px(8, 26, 4, 3, SHOE);
-        break;
-      case 'tuck': // knees up mid-air
-        px(12, 23, 2, 3, skin); px(18, 23, 2, 3, skin);
-        px(11, 26, 4, 3, SHOE); px(17, 26, 4, 3, SHOE);
-        break;
-    }
-
-    // --- arms (drawn last, in front of torso)
-    switch (opts.arms) {
-      case 'down':   px(8, 16, 2, 6, skin); px(22, 16, 2, 6, skin); break;
-      case 'swingA': px(8, 15, 2, 4, skin); px(22, 17, 2, 6, skin); break;
-      case 'swingB': px(8, 17, 2, 6, skin); px(22, 15, 2, 4, skin); break;
-      case 'up':     px(5, 9 + b, 3, 7, skin); px(24, 9 + b, 3, 7, skin); break;   // windup by the ears
-      case 'extend': px(5, 4 + b, 3, 11, skin); px(24, 4 + b, 3, 11, skin); break; // full overhead release
-    }
-    return c;
-  }
-
-  const set = fireFace => ({
-    idle:  [frame({ arms: 'down', legs: 'stand', bob: 0, fireFace }),
-            frame({ arms: 'down', legs: 'stand', bob: 1, fireFace })],
-    run:   [frame({ arms: 'swingA', legs: 'runA', fireFace }),
-            frame({ arms: 'down', legs: 'together', bob: 1, fireFace }),
-            frame({ arms: 'swingB', legs: 'runB', fireFace }),
-            frame({ arms: 'down', legs: 'together', bob: 0, fireFace })],
-    jump:  [frame({ arms: 'up', legs: 'tuck', fireFace })],
-    shoot: [frame({ arms: 'up', legs: 'stand', fireFace }),
-            frame({ arms: 'extend', legs: 'tuck', fireFace })],
-  });
-  return { norm: set(false), fire: set(true) }; // fire mode wears the snarl
+function shade(col, f) { // lighten (f>0) or darken (f<0) a #rrggbb color
+  const n = parseInt(col.slice(1), 16);
+  const ch = i => {
+    let v = (n >> (16 - 8 * i)) & 255;
+    v = f > 0 ? v + (255 - v) * f : v * (1 + f);
+    return Math.round(Math.max(0, Math.min(255, v)));
+  };
+  return 'rgb(' + ch(0) + ',' + ch(1) + ',' + ch(2) + ')';
 }
 
-const SPRITES = [
-  makeSpriteSet(0, '#5C3317', 'locs'),   // Jamaica P1 — deep brown skin, side locs
-  makeSpriteSet(1, '#8D5524', 'hitop'),  // opponent slot — regenerated per game via setOpponent
+const LOOKS = [
+  { skin: '#5C3317', hair: 'locs', face: faceFor('GIOVANNI') },
+  { skin: '#8D5524', hair: 'fade', face: faceFor('BUDDY') },
 ];
-
+function rollLooks() { // called by startGame after names roll
+  const jh = nameHash(TEAMS[0].playerName);
+  LOOKS[0] = { skin: JAM_SKINS[jh % 3], hair: JAM_HAIR[((jh / 3) | 0) % 3], face: faceFor(TEAMS[0].playerName) };
+  const oh = TEAMS[1].hair === 'none' ? 'fade' : (TEAMS[1].hair || 'fade');
+  LOOKS[1] = { skin: TEAMS[1].skin || '#8D5524', hair: oh, face: faceFor(TEAMS[1].playerName) };
+}
 // ============================================================ FIBA opponent roster
 // TEAMS[1] is the mutable opponent slot; ROSTER is the source of truth it's filled
 // from. pool: 'carib' (dynasty qualifiers draw) | 'world' (world-cup draw) |
@@ -411,7 +320,7 @@ const players = [0, 1].map(i => ({
 
 const ball = {
   mode: 'loose', // loose | held | flight
-  x: CX, y: FLOOR - 8, vx: 0, vy: 0,
+  x: CX, y: FLOOR - 11, vx: 0, vy: 0,
   holder: null, flight: null,
 };
 
@@ -438,10 +347,7 @@ function startGame() {
   if (mode === 'arcade') pickArcadeOpponent();
   rollName(TEAMS[0]); // both slots roll from whoever's pool occupies them
   rollName(TEAMS[1]);
-  // one regeneration path for every mode: name decides the face, team decides the kit
-  const jh = nameHash(TEAMS[0].playerName);
-  SPRITES[0] = makeSpriteSet(0, JAM_SKINS[jh % 3], JAM_HAIR[((jh / 3) | 0) % 3], faceFor(TEAMS[0].playerName));
-  SPRITES[1] = makeSpriteSet(1, TEAMS[1].skin || '#8D5524', TEAMS[1].hair || 'hitop', faceFor(TEAMS[1].playerName));
+  rollLooks(); // one path for every mode: name decides the face, team decides the kit
   scores = [0, 0];
   timeLeft = GAME_TIME;
   suddenDeath = false;
@@ -1182,7 +1088,12 @@ function updatePlayer(p, ax, dt) {
 function updateBall(dt) {
   if (ball.mode === 'held') {
     const h = ball.holder;
-    if (h.dunk) { ball.x = h.x + h.fx * 10; ball.y = h.y - 34; return; } // ball cocked overhead
+    if (h.dunk) { // ball rides the dunk pose: cocked behind the head, then whipped through
+      const u = h.dunk.hang !== undefined ? 1 : Math.min(1, h.dunk.t / h.dunk.dur);
+      if (u < 0.7) { ball.x = h.x - h.fx * 7; ball.y = h.y - 72; }
+      else { ball.x = h.x + h.fx * 30; ball.y = h.y - 50; }
+      return;
+    }
     ball.x = h.x + h.fx * 26;
     ball.y = h.y - 3;
     return;
@@ -1224,7 +1135,7 @@ function updateBall(dt) {
   ball.vy += BALL_GRAV * dt;
   ball.x += ball.vx * dt;
   ball.y += ball.vy * dt;
-  const rest = FLOOR - 8;
+  const rest = FLOOR - 11;
   if (ball.y > rest) {
     ball.y = rest;
     if (ball.vy > 90) { ball.vy = -ball.vy * 0.55; playBounce(); }
@@ -1232,8 +1143,8 @@ function updateBall(dt) {
   }
   const rolling = ball.y >= rest - 0.5 && ball.vy === 0;
   ball.vx *= Math.max(0, 1 - (rolling ? 1.8 : 0.15) * dt);
-  if (ball.x < COURT.left + 8) { ball.x = COURT.left + 8; ball.vx = -ball.vx * 0.7; }
-  if (ball.x > BB_X - 8) { ball.x = BB_X - 8; ball.vx = -ball.vx * 0.7; }
+  if (ball.x < COURT.left + 11) { ball.x = COURT.left + 11; ball.vx = -ball.vx * 0.7; }
+  if (ball.x > BB_X - 11) { ball.x = BB_X - 11; ball.vx = -ball.vx * 0.7; }
 
   // pickup on contact
   for (const p of players) {
@@ -1279,12 +1190,12 @@ function render() {
   renderHUD();
 
   // ground shadows (shrink with height)
-  const ballH = clamp(1 - (FLOOR - 8 - ball.y) / 300, 0.35, 1);
-  renderShadow(ball.x, FLOOR + 4, 10 * ballH + 3, 4, 0.35 * ballH);
+  const ballH = clamp(1 - (FLOOR - 11 - ball.y) / 300, 0.35, 1);
+  renderShadow(ball.x, FLOOR + 4, 13 * ballH + 4, 5, 0.35 * ballH);
   players.forEach(p => {
     if (mode === 'practice' && p.team === 1) return; // absent opponent casts no shadow
     const k = clamp(1 - (standY(p) - p.y) / 200, 0.45, 1);
-    renderShadow(p.x, FLOOR + 5, 26 * k, 7, 0.3 * k);
+    renderShadow(p.x, FLOOR + 5, 33 * k, 8, 0.3 * k);
   });
 
   players.forEach(p => {
@@ -1423,72 +1334,263 @@ function renderHoop() {
   }
 }
 
-function spriteFor(p) {
-  const s = p.fireShots > 0 ? SPRITES[p.team].fire : SPRITES[p.team].norm;
-  if (p.dunk) return s.shoot[1]; // full-extension slam pose for the whole flight
-  if (p.shootT > 0) return s.shoot[p.shootT > 0.3 ? 0 : 1]; // windup, then release
-  if (!p.grounded || p.jumpT > 0) return s.jump[0];
-  if (Math.abs(p.vx) > 40) return s.run[Math.floor(p.runT * 10) % 4];
-  return s.idle[Math.floor(tGlobal * 2.5) % 2];
-}
-
 function renderPlayer(p) {
   const team = TEAMS[p.team];
+  const look = LOOKS[p.team];
+  const F = look.face;
+  const onFire = p.fireShots > 0;
+  const footY = p.y + p.h / 2;
 
-  // fire glow
-  if (p.fireShots > 0) {
+  // fire aura under the body
+  if (onFire) {
     const flick = 0.55 + 0.45 * Math.sin(tGlobal * 18 + p.team * 3);
-    const g = ctx.createRadialGradient(p.x, p.y - 7, 8, p.x, p.y - 7, 56);
-    g.addColorStop(0, 'rgba(255,140,0,' + (0.65 * flick) + ')');
+    const g = ctx.createRadialGradient(p.x, p.y - 22, 10, p.x, p.y - 22, 74);
+    g.addColorStop(0, 'rgba(255,140,0,' + (0.6 * flick) + ')');
     g.addColorStop(1, 'rgba(255,60,0,0)');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.x, p.y - 7, 56, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y - 22, 74, 0, Math.PI * 2); ctx.fill();
   }
 
-  // pixel-art body: sprite bottom rides the player's feet (real jump arc shows)
-  const spr = spriteFor(p);
-  const footY = p.y + p.h / 2;
-  const dx = Math.round(p.x - SPRITE_SIZE / 2);
-  const dy = Math.round(footY - SPRITE_SIZE);
-  if (p.fx < 0) {
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(spr, -dx - SPRITE_SIZE, dy, SPRITE_SIZE, SPRITE_SIZE);
-    ctx.restore();
+  ctx.save();
+  ctx.translate(p.x, footY);
+  if (p.fx < 0) ctx.scale(-1, 1);
+
+  // ---- pose: joints in feet-origin local coords, +x = facing, -y = up
+  let legFar = { k: [-5, -14], a: [-8, 0] }, legNear = { k: [6, -14], a: [9, 0] };
+  let armFar = { e: [-14, -37], h: [-16, -25] }, armNear = { e: [16, -37], h: [18, -25] };
+  let lean = 0, bob = 0;
+  const carrying = ball.mode === 'held' && ball.holder === p && !p.dunk && p.shootT <= 0;
+
+  if (p.dunk) {
+    const d = p.dunk;
+    if (d.hang !== undefined) { // swinging on the rim, both hands up
+      armFar = { e: [6, -70], h: [10, -96] };
+      armNear = { e: [16, -70], h: [20, -96] };
+      legFar = { k: [-4, -10], a: [-9, 3] };
+      legNear = { k: [6, -10], a: [2, 5] };
+      lean = 0.07 * Math.sin(tGlobal * 9);
+    } else {
+      const u = Math.min(1, d.t / d.dur);
+      lean = 0.28 * u;
+      legFar = { k: [-9, -18], a: [-17, -7] };
+      legNear = { k: [11, -16], a: [17, -9] };
+      armFar = { e: [-13, -44], h: [-9, -31] };
+      armNear = u < 0.7
+        ? { e: [6, -66], h: [-8, -98] }    // tomahawk: ball cocked behind the head
+        : { e: [20, -60], h: [32, -76] };  // whipping through the rim
+    }
+  } else if (p.shootT > 0) {
+    if (p.shootT > 0.3) {
+      armFar = { e: [-8, -52], h: [4, -80] };
+      armNear = { e: [16, -52], h: [12, -82] };
+    } else {
+      armFar = { e: [-2, -70], h: [2, -98] };
+      armNear = { e: [12, -70], h: [8, -100] };
+    }
+    if (p.grounded) { legFar = { k: [-4, -14], a: [-7, 0] }; legNear = { k: [6, -14], a: [9, 0] }; }
+    else { legFar = { k: [-3, -18], a: [-7, -8] }; legNear = { k: [8, -18], a: [11, -10] }; }
+  } else if (!p.grounded) {
+    legFar = { k: [-2, -20], a: [-9, -8] };
+    legNear = { k: [9, -18], a: [4, -6] };
+    armFar = { e: [-15, -44], h: [-11, -58] };
+    armNear = { e: [19, -44], h: [25, -56] };
+  } else if (p.jumpT > 0) { // steal lunge
+    armNear = { e: [18, -40], h: [31, -33] };
+    armFar = { e: [-13, -40], h: [-9, -30] };
+    lean = 0.13;
+  } else if (Math.abs(p.vx) > 40) {
+    const s = Math.sin(p.runT * 13);
+    bob = Math.abs(Math.cos(p.runT * 13)) * 1.7;
+    legFar = { k: [-6 + 8 * s, -16], a: [-4 + 15 * s, s > 0 ? -6 : 0] };
+    legNear = { k: [6 - 8 * s, -16], a: [4 - 15 * s, s < 0 ? -6 : 0] };
+    armFar = { e: [-12 - 5 * s, -38], h: [-14 - 10 * s, -26 + 4 * s] };
+    armNear = { e: [14 + 5 * s, -38], h: [16 + 10 * s, -26 - 4 * s] };
+    lean = 0.08;
   } else {
-    ctx.drawImage(spr, dx, dy, SPRITE_SIZE, SPRITE_SIZE);
+    bob = Math.sin(tGlobal * 3 + p.team * 2) * 1.4;
+  }
+  if (carrying) armNear = { e: [18, -40], h: [23, -30] };
+
+  if (lean) ctx.rotate(lean);
+  const shY = -50 - bob, hipY = -27, headY = -73 - bob;
+
+  const skin = look.skin, skinD = shade(skin, -0.3), outline = 'rgba(14,11,8,0.65)';
+  const jersey = team.main, acc = team.accent;
+  const hairCol = '#171412';
+
+  const limb = (x1, y1, x2, y2, r, col) => {
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = outline; ctx.lineWidth = r * 2 + 2.6;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = r * 2;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  };
+  const shoe = (ax, ay) => {
+    ctx.fillStyle = '#F4F4F4';
+    rrect(ax - 7, ay - 7, 18, 8, 3.5); ctx.fill();
+    ctx.strokeStyle = outline; ctx.lineWidth = 1.8; ctx.stroke();
+    ctx.fillStyle = '#D9D9D9';
+    ctx.fillRect(ax - 7, ay - 1.5, 18, 2.5);
+    ctx.fillStyle = acc;
+    ctx.beginPath(); ctx.moveTo(ax - 2, ay - 6); ctx.quadraticCurveTo(ax + 4, ay - 3, ax + 9, ay - 5);
+    ctx.lineWidth = 1.6; ctx.strokeStyle = acc; ctx.stroke();
+  };
+
+  // far arm, far leg
+  limb(-9, shY + 4, armFar.e[0], armFar.e[1], 4.2, shade(skin, -0.18));
+  limb(armFar.e[0], armFar.e[1], armFar.h[0], armFar.h[1], 4, shade(skin, -0.18));
+  ctx.fillStyle = shade(skin, -0.18);
+  ctx.beginPath(); ctx.arc(armFar.h[0], armFar.h[1], 4.4, 0, Math.PI * 2); ctx.fill();
+  limb(-5, hipY + 6, legFar.k[0], legFar.k[1], 5, skinD);
+  limb(legFar.k[0], legFar.k[1], legFar.a[0], legFar.a[1], 4.6, skinD);
+  shoe(legFar.a[0], legFar.a[1]);
+
+  // shorts + jersey
+  ctx.fillStyle = '#17171B';
+  rrect(-12, hipY - 3, 24, 16, 6); ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = acc; ctx.fillRect(-12, hipY + 10, 24, 2.6);
+  const jg = ctx.createLinearGradient(0, shY, 0, hipY + 2);
+  jg.addColorStop(0, shade(jersey, 0.16)); jg.addColorStop(1, shade(jersey, -0.26));
+  ctx.fillStyle = jg;
+  rrect(-13, shY - 2, 26, hipY - shY + 6, 7); ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = 2.2; ctx.stroke();
+  ctx.fillStyle = acc;
+  ctx.fillRect(-13, shY + 1, 3, hipY - shY); ctx.fillRect(10, shY + 1, 3, hipY - shY);
+  // jersey number (counter-flipped so it never mirrors)
+  ctx.save();
+  if (p.fx < 0) ctx.scale(-1, 1);
+  ctx.font = 'bold 10px Arial, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = acc;
+  ctx.fillText(String(F.num), p.fx < 0 ? -1 : 1, shY + 12);
+  ctx.restore();
+
+  // near leg, near arm
+  limb(5, hipY + 6, legNear.k[0], legNear.k[1], 5, skin);
+  limb(legNear.k[0], legNear.k[1], legNear.a[0], legNear.a[1], 4.6, skin);
+  shoe(legNear.a[0], legNear.a[1]);
+  limb(9, shY + 4, armNear.e[0], armNear.e[1], 4.2, skin);
+  limb(armNear.e[0], armNear.e[1], armNear.h[0], armNear.h[1], 4, skin);
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(armNear.h[0], armNear.h[1], 4.4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = 1.4; ctx.stroke();
+
+  // ---- the big head
+  const hx = 3, hr = 23;
+  ctx.beginPath(); ctx.arc(-14 + hx, headY + 3, 5.8, 0, Math.PI * 2); // ear (back side)
+  ctx.fillStyle = skin; ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
+  const hg = ctx.createRadialGradient(hx - 7, headY - 9, 5, hx, headY, hr + 4);
+  hg.addColorStop(0, shade(skin, 0.2)); hg.addColorStop(0.7, skin); hg.addColorStop(1, skinD);
+  ctx.beginPath(); ctx.arc(hx, headY, hr, 0, Math.PI * 2);
+  ctx.fillStyle = hg; ctx.fill();
+  ctx.strokeStyle = outline; ctx.lineWidth = 2.4; ctx.stroke();
+
+  // hair
+  ctx.fillStyle = hairCol;
+  if (look.hair === 'hitop') {
+    ctx.beginPath(); ctx.arc(hx, headY - 1, hr + 1, Math.PI, Math.PI * 2); ctx.fill();
+    rrect(hx - 13, headY - hr - 15, 27, 17, 4); ctx.fill();
+    ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
+  } else if (look.hair === 'locs') {
+    ctx.beginPath(); ctx.arc(hx, headY - 1, hr + 1, Math.PI, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 4; i++) {
+      const lx = hx - hr + 1 + i * 4.5;
+      limb(lx, headY - 6, lx - 3, headY + 12 + (i % 2) * 4, 2.6, hairCol);
+    }
+  } else { // fade
+    ctx.beginPath(); ctx.arc(hx, headY - 1.5, hr + 0.5, Math.PI * 1.02, Math.PI * 1.98); ctx.fill();
+  }
+  // headband (accent) sits over the hairline
+  ctx.fillStyle = acc;
+  ctx.fillRect(hx - hr + 1, headY - 12, hr * 2 - 2, 6.5);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+  ctx.strokeRect(hx - hr + 1, headY - 12, hr * 2 - 2, 6.5);
+
+  // ---- face (3/4 toward the play)
+  const eyeCol = onFire ? '#E03000' : '#141210';
+  const eF = [hx + 4, headY - 1], eN = [hx + 15, headY];
+  const eyeR = F.eyes === 2 ? 5.6 : 4.8, eyeH = F.eyes === 1 ? 3.4 : 5.4;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath(); ctx.ellipse(eF[0], eF[1], eyeR, eyeH, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(eN[0], eN[1], eyeR, eyeH, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.ellipse(eF[0], eF[1], eyeR, eyeH, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(eN[0], eN[1], eyeR, eyeH, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = eyeCol;
+  ctx.beginPath(); ctx.arc(eF[0] + 1.6, eF[1] + 0.4, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(eN[0] + 1.6, eN[1] + 0.4, 2.5, 0, Math.PI * 2); ctx.fill();
+  // brows
+  ctx.strokeStyle = hairCol; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+  const angry = onFire || F.brows === 2;
+  ctx.beginPath();
+  ctx.moveTo(eF[0] - 4, eF[1] - (angry ? 9 : 8) + (angry ? 0 : 0));
+  ctx.lineTo(eF[0] + 4, eF[1] - (angry ? 6 : 8.5));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(eN[0] - 4, eN[1] - (angry ? 6 : 8.5));
+  ctx.lineTo(eN[0] + 4, eN[1] - (angry ? 9 : 8));
+  ctx.stroke();
+  // nose
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.8;
+  ctx.beginPath(); ctx.moveTo(hx + 20, headY + 4); ctx.quadraticCurveTo(hx + 22, headY + 7, hx + 19, headY + 8); ctx.stroke();
+  // mouth
+  const my = headY + 13;
+  if (onFire) {
+    ctx.fillStyle = '#5E1010';
+    rrect(hx + 6, my - 2, 13, 6, 2.5); ctx.fill();
+    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(hx + 7, my + 1); ctx.lineTo(hx + 18, my + 1); ctx.stroke();
+  } else if (F.mouth === 1) { // grin
+    ctx.strokeStyle = '#3A1808'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.arc(hx + 12, my - 2, 6.5, 0.15, Math.PI - 0.5); ctx.stroke();
+  } else if (F.mouth === 2) { // game-face shout
+    ctx.fillStyle = '#4A1A0A';
+    ctx.beginPath(); ctx.ellipse(hx + 12, my, 4.4, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.strokeStyle = '#3A1808'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(hx + 6, my); ctx.lineTo(hx + 17, my + 0.5); ctx.stroke();
   }
 
-  // name label
-  const labelY = footY - SPRITE_SIZE - 8;
-  ctx.font = 'bold 11px "Courier New", monospace';
+  ctx.restore();
+
+  // name label above the hair
+  const labelY = footY - 128;
+  ctx.font = 'bold 12px "Courier New", monospace';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
   ctx.strokeText(team.playerName, p.x, labelY);
   ctx.fillStyle = '#FFF';
   ctx.fillText(team.playerName, p.x, labelY);
-  if (p.fireShots > 0) {
-    ctx.fillText('\u{1F525}', p.x, labelY - 14);
-  }
+  if (onFire) ctx.fillText('\u{1F525}', p.x, labelY - 15);
 }
 
+const BALL_R = 12;
 function renderBall() {
-  const r = 8;
-  const bx = ball.x, by = ball.y;
-  ctx.fillStyle = '#FF6B00';
+  const r = BALL_R, bx = ball.x, by = ball.y;
+  const g = ctx.createRadialGradient(bx - r * 0.4, by - r * 0.45, r * 0.15, bx, by, r * 1.05);
+  g.addColorStop(0, '#FF9F45');
+  g.addColorStop(0.55, '#F07018');
+  g.addColorStop(1, '#A54307');
+  ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(45,16,0,0.8)';
+  ctx.lineWidth = 2;
   ctx.stroke();
-  // seams
+  // seams spin as the ball travels
+  const rot = (bx * 0.9 + by * 0.5) * 0.045;
   ctx.save();
-  ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.clip();
+  ctx.beginPath(); ctx.arc(bx, by, r - 0.6, 0, Math.PI * 2); ctx.clip();
+  ctx.translate(bx, by); ctx.rotate(rot);
+  ctx.strokeStyle = 'rgba(70,25,0,0.85)';
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
-  ctx.moveTo(bx - r, by); ctx.lineTo(bx + r, by);
-  ctx.moveTo(bx, by - r); ctx.lineTo(bx, by + r);
-  ctx.arc(bx - r * 0.9, by, r * 0.9, -0.9, 0.9);
-  ctx.arc(bx + r * 0.9, by, r * 0.9, Math.PI - 0.9, Math.PI + 0.9);
+  ctx.moveTo(-r, 0); ctx.lineTo(r, 0);
+  ctx.moveTo(0, -r); ctx.lineTo(0, r);
+  ctx.arc(-r * 0.95, 0, r * 0.95, -0.95, 0.95);
+  ctx.arc(r * 0.95, 0, r * 0.95, Math.PI - 0.95, Math.PI + 0.95);
   ctx.stroke();
   ctx.restore();
 }
