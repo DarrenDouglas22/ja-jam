@@ -234,12 +234,35 @@ function makeSpriteSet(teamIdx, skin, hairStyle) {
 }
 
 const SPRITES = [
-  makeSpriteSet(0, '#5C3317', 'locs'),   // Delroy — deep brown skin, side locs
-  makeSpriteSet(1, '#8D5524', 'hitop'),  // Keston — warm brown skin, hi-top fade
+  makeSpriteSet(0, '#5C3317', 'locs'),   // Jamaica P1 — deep brown skin, side locs
+  makeSpriteSet(1, '#8D5524', 'hitop'),  // opponent slot — regenerated per game via setOpponent
 ];
 
+// ============================================================ opponent slot
+// TEAMS[1] is the mutable opponent slot; ROSTER is the source of truth it's
+// filled from (expanded to the full FIBA field in the team-table section).
+const ROSTER = [
+  { id: 'BAH', abbr: 'BAH', full: 'TEAM BAHAMAS', playerName: 'VJ',
+    main: '#00778B', accent: '#FAD44D', skin: '#8D5524', hair: 'hitop', base: 3 },
+];
+let lastOppIdx = -1;
+
+function setOpponent(t) {
+  Object.assign(TEAMS[1], t);
+  SPRITES[1] = makeSpriteSet(1, t.skin, t.hair);
+}
+
+function pickArcadeOpponent() { // random rotation, never the same team twice in a row
+  let i;
+  do { i = (Math.random() * ROSTER.length) | 0; } while (ROSTER.length > 1 && i === lastOppIdx);
+  lastOppIdx = i;
+  setOpponent(ROSTER[i]);
+}
+
 // ============================================================ state
-let state = 'title'; // title | help | playing | paused | over | board
+let state = 'title'; // title | help | playing | paused | over | board (+ dynasty screens)
+let mode = 'arcade'; // arcade | dynasty | practice — how a 'playing' game scores and ends
+let curCpuLevel = 0; // effective CPU level for the game in progress (set at startGame)
 let scores, timeLeft, suddenDeath, winner, hoopFlash, banner, tGlobal = 0;
 let shake = 0; // screen-shake timer (dunks)
 let boardData = null, myFinalScore = 0, myEntry = null, submitting = false; // leaderboard flow
@@ -279,6 +302,7 @@ function tipOff() {
 
 function startGame() {
   rollJamName();
+  if (mode === 'arcade') pickArcadeOpponent();
   scores = [0, 0];
   timeLeft = GAME_TIME;
   suddenDeath = false;
@@ -288,16 +312,19 @@ function startGame() {
   shake = 0;
   players.forEach(resetPlayerState);
   cpu.decideT = 0; cpu.dir = 0; cpu.wantSteal = false; cpu.shootAt = -1;
-  players[1].maxMul = cpuSkill().speed;
+  curCpuLevel = mode === 'dynasty' ? dynastyLevel() : cpuLevel;
+  players[1].maxMul = cpuSkill(curCpuLevel).speed;
   tipOff();
   state = 'playing';
 }
 
 function endGame(teamIdx) {
   winner = teamIdx;
-  state = 'over';
   playBuzzer();
-  if (teamIdx === 0) cpuLevel = Math.min(8, cpuLevel + 1); // beat VJ and he comes back sharper
+  if (mode === 'dynasty') { endDynastyGame(teamIdx); return; } // dynasty owns its outcome
+  // arcade: leveling ladder + run-based leaderboard (practice never calls endGame)
+  state = 'over';
+  if (teamIdx === 0) cpuLevel = Math.min(8, cpuLevel + 1); // beat the CPU and it comes back sharper
   sessionScore += scores[0];
   entryOpen = teamIdx === 1; // a loss ends the run — post the session total
   if (entryOpen) {
@@ -305,6 +332,10 @@ function endGame(teamIdx) {
     sessionScore = 0; // next run starts fresh
   }
 }
+
+// dynasty hooks — replaced by the dynasty section; stubs keep the fork total
+function dynastyLevel() { return cpuLevel; }
+function endDynastyGame(teamIdx) { state = 'over'; }
 
 // ---- leaderboard flow -------------------------------------------------------
 const iniInput = document.getElementById('ini');
@@ -390,31 +421,34 @@ Object.values(CONTROLS).forEach(k => ALL_KEYS.add(k));
 window.addEventListener('keydown', e => {
   if (ALL_KEYS.has(e.code)) e.preventDefault();
   initAudio();
-  if (state === 'title') {
-    if (e.code === 'KeyH') { state = 'help'; return; }
-    if (e.code === 'KeyL') { openBoard(); return; }
-    startGame(); return;
-  }
-  if (state === 'help') { startGame(); return; }
-  if (state === 'over') {
-    if (entryOpen) { if (e.code === 'Enter') submitInitials(); return; } // letters flow into the hidden input
-    if (e.code === 'Enter' || e.code === 'Space') startGame();
-    return;
-  }
-  if (state === 'board') {
-    if (e.code === 'Enter' || e.code === 'Space') startGame();
-    return;
-  }
-  if (state === 'paused') {
-    if (e.code === 'KeyQ') { state = 'title'; return; }
-    if (!e.repeat) state = 'playing'; // any other key resumes
-    return;
-  }
-  keys[e.code] = true;
-  if (!e.repeat) {
-    if (e.code === 'KeyP' || e.code === 'Escape') { state = 'paused'; return; }
-    if (e.code === CONTROLS.action) doAction(players[0]);
-    if (e.code === CONTROLS.up && players[0].grounded) players[0].vy = -JUMP_V; // real jump
+  switch (state) {
+    case 'title':
+      if (e.code === 'KeyH') { state = 'help'; return; }
+      if (e.code === 'KeyL') { openBoard(); return; }
+      startGame(); return;
+    case 'help':
+      startGame(); return;
+    case 'over':
+      if (entryOpen) { if (e.code === 'Enter') submitInitials(); return; } // letters flow into the hidden input
+      if (e.code === 'Enter' || e.code === 'Space') startGame();
+      return;
+    case 'board':
+      if (e.code === 'Enter' || e.code === 'Space') startGame();
+      return;
+    case 'paused':
+      if (e.code === 'KeyQ') { state = 'title'; return; }
+      if (!e.repeat) state = 'playing'; // any other key resumes
+      return;
+    case 'playing':
+      keys[e.code] = true;
+      if (!e.repeat) {
+        if (e.code === 'KeyP' || e.code === 'Escape') { state = 'paused'; return; }
+        if (e.code === CONTROLS.action) doAction(players[0]);
+        if (e.code === CONTROLS.up && players[0].grounded) players[0].vy = -JUMP_V; // real jump
+      }
+      return;
+    default:
+      return; // unlisted screens ignore input — new states fail inert, never as "playing"
   }
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -462,10 +496,11 @@ window.addEventListener('touchstart', () => touchPanel.classList.add('on'), { on
 
 function touchPress(fn) {
   initAudio();
+  if (state === 'playing') { fn(); return; }
+  if (state === 'paused') { state = 'playing'; return; } // any touch button resumes
   if (state === 'title' || state === 'help' || state === 'board') { startGame(); return; }
   if (state === 'over') { if (!entryOpen) startGame(); return; } // initials screen: use the on-canvas buttons
-  if (state === 'paused') { state = 'playing'; return; } // any touch button resumes
-  fn();
+  // unlisted screens ignore touch buttons — new states fail inert
 }
 function bindTouch(el, onDown, onUp) {
   el.addEventListener('pointerdown', e => { e.preventDefault(); onDown(); });
@@ -590,19 +625,22 @@ function trySteal(p) {
 // ============================================================ CPU opponent (P2 / VJ)
 // VJ starts rusty and levels up each time Giovanni beats him.
 let cpuLevel = 0;
-function cpuSkill() {
+function cpuSkill(level) {
+  // Piecewise ramps: identical to the original curve through ~Lv.5, then a gentler
+  // climb so higher levels keep differentiating (dynasty world stage + Olympics, up to 14).
+  const ext = Math.max(0, level - 5);
   return {
-    delay: Math.max(0.15, 0.45 - cpuLevel * 0.06),      // reaction delay between decisions
-    range: Math.min(300, 170 + cpuLevel * 25),          // shooting range: 2D distance to rim
-    stealDist: Math.min(61, 37 + cpuLevel * 5),         // how close he must be to pickpocket
-    speed: Math.min(1, 0.72 + cpuLevel * 0.06),         // top-speed multiplier
+    delay: Math.max(0.06, Math.max(0.15, 0.45 - level * 0.06) - ext * 0.01), // reaction delay between decisions
+    range: Math.min(380, Math.min(300, 170 + level * 25) + ext * 9),         // shooting range: 2D distance to rim
+    stealDist: Math.min(75, Math.min(61, 37 + level * 5) + ext * 1.6),       // how close he must be to pickpocket
+    speed: Math.min(1.12, Math.min(1, 0.72 + level * 0.06) + ext * 0.013),   // top-speed multiplier
   };
 }
 const cpu = { decideT: 0, dir: 0, wantSteal: false, shootAt: -1 };
 
 function cpuThink() {
   const p = players[1];
-  const skill = cpuSkill();
+  const skill = cpuSkill(curCpuLevel);
   cpu.dir = 0;
   if (ball.holder === p) {
     // in possession: attack the hoop, launch when in range
@@ -627,7 +665,7 @@ function cpuThink() {
 function cpuUpdate(dt) {
   const p = players[1];
   cpu.decideT -= dt;
-  if (cpu.decideT <= 0) { cpu.decideT = cpuSkill().delay; cpuThink(); }
+  if (cpu.decideT <= 0) { cpu.decideT = cpuSkill(curCpuLevel).delay; cpuThink(); }
   if (cpu.shootAt >= 0) {
     cpu.shootAt -= dt;
     if (cpu.shootAt < 0) {
@@ -856,6 +894,7 @@ function render() {
   if (state === 'title') { renderTitle(); return; }
   if (state === 'help') { renderHelp(); return; }
   if (state === 'board') { renderBoard(); return; }
+  if (state !== 'playing' && state !== 'paused' && state !== 'over') return; // unknown state: blank frame, never the court
 
   ctx.save();
   if (shake > 0) ctx.translate((Math.random() - 0.5) * 14 * shake, (Math.random() - 0.5) * 10 * shake);
