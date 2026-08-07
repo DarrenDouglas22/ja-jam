@@ -596,6 +596,14 @@ window.addEventListener('keydown', e => {
       enterMatchup(); return; // any key: next matchup, or the same one after a loss
     case 'gold':
       state = 'title'; return; // any key
+    case 'hoops':
+      if (e.code === 'Escape') { state = 'title'; return; }
+      if (e.code === 'ArrowLeft') { hoopsMove(-1); return; }
+      if (e.code === 'ArrowRight') { hoopsMove(1); return; }
+      if (e.code === 'ArrowUp') { hoopsMove(-4); return; }
+      if (e.code === 'ArrowDown') { hoopsMove(4); return; }
+      if (e.code === 'Enter' || e.code === 'Space') hoopsConfirm();
+      return;
     default:
       return; // unlisted screens ignore input — new states fail inert, never as "playing"
   }
@@ -648,6 +656,13 @@ canvas.addEventListener('click', e => {
   }
   if (state === 'dynastyOver') { enterMatchup(); return; }
   if (state === 'gold') { state = 'title'; return; }
+  if (state === 'hoops') {
+    if (hit(hoopsBackRect())) { state = 'title'; return; }
+    for (let i = 0; i < HOOP_STYLES.length; i++) {
+      if (hit(hoopRect(i))) { hoopsSel = i; hoopsConfirm(); return; }
+    }
+    return;
+  }
 });
 
 // ============================================================ touch controls (mobile)
@@ -675,6 +690,12 @@ function touchPress(btn, fn) {
       return;
     case 'dynastyOver': enterMatchup(); return;
     case 'gold': state = 'title'; return;
+    case 'hoops': // D-pad steps through every slot, locked ones included (hints stay readable)
+      if (btn === 'L') hoopsMove(-1);
+      else if (btn === 'R') hoopsMove(1);
+      else if (btn === 'A') hoopsConfirm();
+      else if (btn === 'J') state = 'title';
+      return;
     default: return; // unlisted screens ignore touch buttons — new states fail inert
   }
 }
@@ -1009,8 +1030,6 @@ function endDynastyGame(teamIdx) {
   state = 'dynastyOver';
 }
 
-function unlockHoopFor(id) {} // replaced by the hoop-styles section
-
 MENU.push({
   label: () => dyn && dyn.schedule ? 'CONTINUE DYNASTY' : 'DYNASTY',
   run: () => { mode = 'dynasty'; if (dyn && dyn.schedule) continueDynasty(); else newDynasty(); },
@@ -1024,6 +1043,62 @@ let prac = { makes: 0, attempts: 0 };
 MENU.push({
   label: () => 'PRACTICE',
   run: () => { mode = 'practice'; prac = { makes: 0, attempts: 0 }; startGame(); },
+});
+
+// ============================================================ hoop styles
+// Cosmetic only: colors and trim read by renderHoop — geometry never changes.
+// One style per Caribbean nation beaten (collect across dynasties; each draw
+// skips one island), plus the golden Olympic hoop for beating USA.
+const HOOPS_KEY = 'jajam.hoops.v1';
+const HOOP_STYLES = [
+  { id: 'CLASSIC', label: 'CLASSIC',       unlock: null,  bb: '#E8E8E8', trim: '#B8B8B8', rim: '#FF4500', net: 'rgba(255,255,255,0.55)' },
+  { id: 'GUY',  label: 'GOLDEN ARROW',     unlock: 'GUY', bb: '#0E3B24', trim: '#FCD116', rim: '#FCD116', net: 'rgba(252,209,22,0.6)' },
+  { id: 'ISV',  label: 'ISLAND PEARL',     unlock: 'ISV', bb: '#F4F4F4', trim: '#0033A0', rim: '#0033A0', net: 'rgba(255,211,77,0.7)' },
+  { id: 'CUB',  label: 'HAVANA HEAT',      unlock: 'CUB', bb: '#1B1B1F', trim: '#CF142B', rim: '#CF142B', net: 'rgba(255,255,255,0.6)' },
+  { id: 'BAH',  label: 'AQUA MARINA',      unlock: 'BAH', bb: '#052E36', trim: '#00ABC9', rim: '#00ABC9', net: 'rgba(250,212,77,0.65)' },
+  { id: 'DOM',  label: 'QUISQUEYA',        unlock: 'DOM', bb: '#EDEDF4', trim: '#002D62', rim: '#CE1126', net: 'rgba(0,45,98,0.55)' },
+  { id: 'PUR',  label: 'BORICUA BLUE',     unlock: 'PUR', bb: '#0C1B3A', trim: '#0050F0', rim: '#ED0000', net: 'rgba(255,255,255,0.6)' },
+  { id: 'USA',  label: 'OLYMPIC GOLD',     unlock: 'USA', bb: '#1A1405', trim: '#FED100', rim: '#FED100', net: 'rgba(254,209,0,0.75)' },
+];
+function validHoops(h) {
+  if (!h || h.v !== 1 || !Array.isArray(h.unlocked) || typeof h.selected !== 'string') return null;
+  const ids = HOOP_STYLES.map(s => s.id);
+  const unlocked = h.unlocked.filter(id => ids.includes(id));
+  if (!unlocked.includes('CLASSIC')) unlocked.unshift('CLASSIC');
+  return { v: 1, unlocked, selected: unlocked.includes(h.selected) ? h.selected : 'CLASSIC' };
+}
+let hoops = validHoops(loadKey(HOOPS_KEY)) || { v: 1, unlocked: ['CLASSIC'], selected: 'CLASSIC' };
+let hoopsSel = 0;
+let lockedFlashUntil = 0; // confirming a locked style flashes LOCKED instead of selecting
+
+const curHoopStyle = () => HOOP_STYLES.find(s => s.id === hoops.selected) || HOOP_STYLES[0];
+
+function unlockHoopFor(teamId) { // called by the dynasty on every game won
+  const style = HOOP_STYLES.find(s => s.unlock === teamId);
+  if (!style || hoops.unlocked.includes(style.id)) return;
+  hoops.unlocked.push(style.id);
+  saveKey(HOOPS_KEY, hoops);
+  unlockToast = 'NEW HOOP UNLOCKED: ' + style.label;
+}
+function hoopsMove(d) { hoopsSel = (hoopsSel + d + HOOP_STYLES.length) % HOOP_STYLES.length; }
+function hoopsConfirm() {
+  const s = HOOP_STYLES[hoopsSel];
+  if (hoops.unlocked.includes(s.id)) {
+    hoops.selected = s.id;
+    saveKey(HOOPS_KEY, hoops);
+    playScore();
+  } else {
+    lockedFlashUntil = tGlobal + 0.7;
+    playRim();
+  }
+}
+
+MENU.push({
+  label: () => 'HOOP DESIGNS',
+  run: () => {
+    hoopsSel = Math.max(0, HOOP_STYLES.findIndex(s => s.id === hoops.selected));
+    state = 'hoops';
+  },
 });
 
 // ============================================================ update
@@ -1194,6 +1269,7 @@ function render() {
   if (state === 'dynastyIntro') { renderDynastyIntro(); return; }
   if (state === 'matchup') { renderMatchup(); return; }
   if (state === 'gold') { renderGold(); return; }
+  if (state === 'hoops') { renderHoops(); return; }
   if (state !== 'playing' && state !== 'paused' && state !== 'over' && state !== 'dynastyOver') return; // unknown state: blank frame, never the court
 
   ctx.save();
@@ -1314,18 +1390,19 @@ function renderCourt() {
 }
 
 function renderHoop() {
+  const hs = curHoopStyle(); // cosmetic colors only — geometry constants never move
   // wall arm + backboard
   ctx.fillStyle = '#33414F';
   ctx.fillRect(BB_X + 6, 209, W - BB_X - 6, 8);
-  ctx.fillStyle = '#E8E8E8';
+  ctx.fillStyle = hs.bb;
   ctx.fillRect(BB_X, 187, 6, 92);
-  ctx.fillStyle = '#B8B8B8';
+  ctx.fillStyle = hs.trim;
   ctx.fillRect(BB_X - 4, 263, 4, 8); // rim bracket
   // rim
-  ctx.fillStyle = '#FF4500';
+  ctx.fillStyle = hs.rim;
   ctx.fillRect(HOOP.x - HOOP.rimHalf, HOOP.y - 2, HOOP.rimHalf * 2 + 1, 4);
   // net
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.strokeStyle = hs.net;
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const nx = HOOP.x - HOOP.rimHalf + 3 + i * (HOOP.rimHalf * 2 - 6) / 4;
@@ -2009,6 +2086,78 @@ function renderDynastyOver() {
   ctx.font = 'bold 19px Arial, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
   ctx.fillText('PRESS ANY KEY', CX, 330);
+}
+
+function hoopRect(i) {
+  const col = i % 4, row = (i / 4) | 0;
+  return { x: 72 + col * 168, y: 128 + row * 156, w: 152, h: 138 };
+}
+function hoopsBackRect() { return { x: 20, y: 18, w: 116, h: 32 }; }
+
+function renderHoops() {
+  ctx.fillStyle = '#0B0B0C'; ctx.fillRect(0, 0, W, H);
+  renderStripes();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 34px Arial, sans-serif';
+  ctx.fillStyle = '#FED100';
+  ctx.fillText('HOOP DESIGNS', CX, 70);
+
+  HOOP_STYLES.forEach((s, i) => {
+    const r = hoopRect(i);
+    const unlocked = hoops.unlocked.includes(s.id);
+    const active = hoops.selected === s.id;
+    const cursor = hoopsSel === i;
+
+    ctx.fillStyle = unlocked ? 'rgba(28,28,31,0.92)' : 'rgba(18,18,20,0.92)';
+    rrect(r.x, r.y, r.w, r.h, 10); ctx.fill();
+    // border: gold = equipped, orange = cursor, dim = the rest
+    ctx.lineWidth = active || cursor ? 3 : 1.5;
+    ctx.strokeStyle = active ? '#FED100' : cursor ? BC_ORANGE : 'rgba(154,176,200,0.35)';
+    ctx.stroke();
+
+    // mini hoop preview in the style's colors
+    const hx = r.x + r.w / 2, hy = r.y + 52;
+    ctx.save();
+    if (!unlocked) ctx.globalAlpha = 0.35;
+    ctx.fillStyle = s.bb;   ctx.fillRect(hx + 26, hy - 28, 6, 54);
+    ctx.fillStyle = s.trim; ctx.fillRect(hx + 21, hy + 4, 5, 8);
+    ctx.fillStyle = s.rim;  ctx.fillRect(hx - 16, hy + 6, 38, 5);
+    ctx.strokeStyle = s.net; ctx.lineWidth = 1.5;
+    for (let n = 0; n <= 3; n++) {
+      const nx = hx - 12 + n * 10;
+      ctx.beginPath(); ctx.moveTo(nx, hy + 11); ctx.lineTo(hx + (nx - hx) * 0.5 - 2, hy + 32); ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.font = 'bold 12px "Courier New", monospace';
+    ctx.fillStyle = unlocked ? '#E8EEF6' : 'rgba(154,176,200,0.6)';
+    ctx.fillText(s.label, r.x + r.w / 2, r.y + r.h - 38);
+    ctx.font = '10px "Courier New", monospace';
+    if (!unlocked) {
+      ctx.fillStyle = 'rgba(154,176,200,0.7)';
+      ctx.fillText(s.unlock === 'USA' ? 'WIN OLYMPIC GOLD' : 'BEAT ' + teamById(s.unlock).full.replace('TEAM ', ''), r.x + r.w / 2, r.y + r.h - 20);
+    } else if (active) {
+      ctx.fillStyle = '#FED100';
+      ctx.fillText('EQUIPPED', r.x + r.w / 2, r.y + r.h - 20);
+    }
+    if (cursor && !unlocked && tGlobal < lockedFlashUntil && Math.floor(tGlobal * 8) % 2) {
+      ctx.font = 'bold 18px Arial, sans-serif';
+      ctx.fillStyle = '#FF5050';
+      ctx.fillText('LOCKED', r.x + r.w / 2, r.y + 56);
+    }
+  });
+
+  const bk = hoopsBackRect();
+  ctx.strokeStyle = 'rgba(154,176,200,0.7)'; ctx.lineWidth = 2;
+  rrect(bk.x, bk.y, bk.w, bk.h, 8); ctx.stroke();
+  ctx.font = '13px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('< BACK [ESC]', bk.x + bk.w / 2, bk.y + bk.h / 2);
+
+  ctx.font = '12px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  const touchOn = getComputedStyle(touchPanel).display !== 'none';
+  ctx.fillText(touchOn ? 'd-pad moves - SHOOT equips - JUMP backs out' : 'arrows move - ENTER equips - ESC backs out', CX, 462);
 }
 
 function renderGold() {
