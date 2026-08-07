@@ -472,9 +472,6 @@ function endGame(teamIdx) {
   }
 }
 
-// dynasty hooks — replaced by the dynasty section; stubs keep the fork total
-function dynastyLevel() { return cpuLevel; }
-function endDynastyGame(teamIdx) { state = 'over'; }
 
 // ---- leaderboard flow -------------------------------------------------------
 const iniInput = document.getElementById('ini');
@@ -589,6 +586,16 @@ window.addEventListener('keydown', e => {
         if (e.code === CONTROLS.up && players[0].grounded) players[0].vy = -JUMP_V; // real jump
       }
       return;
+    case 'dynastyIntro':
+      enterMatchup(); return; // any key
+    case 'matchup':
+      if (e.code === 'Escape') { state = 'title'; return; } // BACK — save untouched
+      if (e.code === 'Enter' || e.code === 'Space') startGame();
+      return;
+    case 'dynastyOver':
+      enterMatchup(); return; // any key: next matchup, or the same one after a loss
+    case 'gold':
+      state = 'title'; return; // any key
     default:
       return; // unlisted screens ignore input — new states fail inert, never as "playing"
   }
@@ -631,7 +638,16 @@ canvas.addEventListener('click', e => {
   if (state === 'paused') {
     if (hit(quitRect())) { state = 'title'; return; }
     state = 'playing'; // tap anywhere else resumes
+    return;
   }
+  if (state === 'dynastyIntro') { enterMatchup(); return; }
+  if (state === 'matchup') {
+    if (hit(matchupBackRect())) { state = 'title'; return; } // save untouched
+    if (hit(matchupPlayRect())) { startGame(); return; }
+    return;
+  }
+  if (state === 'dynastyOver') { enterMatchup(); return; }
+  if (state === 'gold') { state = 'title'; return; }
 });
 
 // ============================================================ touch controls (mobile)
@@ -652,6 +668,13 @@ function touchPress(btn, fn) {
     case 'help': state = 'title'; return;
     case 'board': startGame(); return;
     case 'over': if (!entryOpen) startGame(); return; // initials screen: use the on-canvas buttons
+    case 'dynastyIntro': enterMatchup(); return;
+    case 'matchup': // action tips off; jump backs out; BACK/PLAY are also tappable on-canvas
+      if (btn === 'A') startGame();
+      else if (btn === 'J') state = 'title';
+      return;
+    case 'dynastyOver': enterMatchup(); return;
+    case 'gold': state = 'title'; return;
     default: return; // unlisted screens ignore touch buttons — new states fail inert
   }
 }
@@ -885,6 +908,95 @@ function resetAfterScore(concederIdx) {
   ball.vx = 0; ball.vy = 0;
 }
 
+// ============================================================ persistence (guarded)
+// First localStorage use in the game. Safari's "Block All Cookies" throws on
+// touching localStorage at all — degrade to in-memory play instead of crashing.
+function loadKey(key) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key));
+    return v && typeof v === 'object' ? v : null;
+  } catch (e) { return null; }
+}
+function saveKey(key, obj) {
+  try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) { /* no-save mode */ }
+}
+
+// ============================================================ dynasty
+// A 15-game campaign: Caribbean Qualifiers (5 of 6, shuffled) -> FIBA World Cup
+// (6 of 15, shuffled) -> Olympics (CAN/GER/FRA shuffled, USA always the final).
+// The drawn schedule lives in the save so resume keeps the same bracket.
+const DYN_KEY = 'jajam.dynasty.v1';
+const DYN_GAMES = 15;
+let dynLossStreak = 0; // consecutive losses on the current game (mercy rule, never saved)
+let dynResult = null;  // 'win' | 'loss' for the post-game overlay
+let unlockToast = null; // one-line hoop-unlock note on the post-game overlay
+
+function validDyn(d) {
+  if (!d || d.v !== 1) return null;
+  if (d.schedule !== null && !(Array.isArray(d.schedule) && d.schedule.length === DYN_GAMES &&
+      d.schedule.every(id => teamById(id)))) return null;
+  if (!Number.isInteger(d.rung) || d.rung < 0 || d.rung >= DYN_GAMES) return null;
+  if (!Number.isInteger(d.champs) || d.champs < 0) return null;
+  return d;
+}
+let dyn = validDyn(loadKey(DYN_KEY)); // null = fresh; schedule null = between dynasties
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function drawSchedule() {
+  const carib = shuffle(ROSTER.filter(t => t.pool === 'carib').map(t => t.id)).slice(0, 5);
+  const world = shuffle(ROSTER.filter(t => t.pool === 'world').map(t => t.id)).slice(0, 6);
+  return carib.concat(world, shuffle(['CAN', 'GER', 'FRA']), ['USA']);
+}
+const dynStage = rung => rung < 5 ? 'CARIBBEAN QUALIFIERS' : rung < 11 ? 'FIBA WORLD CUP' : 'OLYMPICS';
+const dynTeam = () => teamById(dyn.schedule[dyn.rung]);
+
+function newDynasty() {
+  dyn = { v: 1, schedule: drawSchedule(), rung: 0, champs: dyn ? dyn.champs : 0 };
+  dynLossStreak = 0;
+  saveKey(DYN_KEY, dyn);
+  state = 'dynastyIntro';
+}
+function continueDynasty() { dynLossStreak = 0; enterMatchup(); }
+function enterMatchup() {
+  setOpponent(dynTeam());
+  unlockToast = null;
+  state = 'matchup';
+}
+function dynastyLevel() { // fixed per team; 3 straight losses quietly ease it one level
+  return Math.max(0, dynTeam().base - (dynLossStreak >= 3 ? 1 : 0));
+}
+function endDynastyGame(teamIdx) {
+  dynResult = teamIdx === 0 ? 'win' : 'loss';
+  if (teamIdx === 0) {
+    unlockHoopFor(dyn.schedule[dyn.rung]);
+    dynLossStreak = 0;
+    if (dyn.rung >= DYN_GAMES - 1) { // beat USA in the final
+      dyn.champs++; dyn.schedule = null; dyn.rung = 0;
+      saveKey(DYN_KEY, dyn);
+      state = 'gold';
+      return;
+    }
+    dyn.rung++;
+    saveKey(DYN_KEY, dyn); // save only on a completed game — quit/refresh records nothing
+  } else {
+    dynLossStreak++;
+  }
+  state = 'dynastyOver';
+}
+
+function unlockHoopFor(id) {} // replaced by the hoop-styles section
+
+MENU.push({
+  label: () => dyn && dyn.schedule ? 'CONTINUE DYNASTY' : 'DYNASTY',
+  run: () => { mode = 'dynasty'; if (dyn && dyn.schedule) continueDynasty(); else newDynasty(); },
+});
+
 // ============================================================ update
 function update(dt) {
   tGlobal += dt;
@@ -1047,7 +1159,10 @@ function render() {
   if (state === 'title') { renderTitle(); return; }
   if (state === 'help') { renderHelp(); return; }
   if (state === 'board') { renderBoard(); return; }
-  if (state !== 'playing' && state !== 'paused' && state !== 'over') return; // unknown state: blank frame, never the court
+  if (state === 'dynastyIntro') { renderDynastyIntro(); return; }
+  if (state === 'matchup') { renderMatchup(); return; }
+  if (state === 'gold') { renderGold(); return; }
+  if (state !== 'playing' && state !== 'paused' && state !== 'over' && state !== 'dynastyOver') return; // unknown state: blank frame, never the court
 
   ctx.save();
   if (shake > 0) ctx.translate((Math.random() - 0.5) * 14 * shake, (Math.random() - 0.5) * 10 * shake);
@@ -1069,6 +1184,7 @@ function render() {
 
   if (banner && banner.text) renderBanner();
   if (state === 'over') renderWin();
+  if (state === 'dynastyOver') renderDynastyOver();
   if (state === 'paused') renderPause();
   ctx.restore();
 }
@@ -1318,7 +1434,7 @@ function renderHUD() {
   const touchOn = getComputedStyle(touchPanel).display !== 'none';
   ctx.fillText(touchOn ? 'P1 • touch controls' : 'P1 • ←→ move • ↑ jump • SPACE shoot/steal • P pause', COURT.left, 486);
   ctx.textAlign = 'right';
-  ctx.fillText(TEAMS[1].playerName + ' • CPU Lv.' + (cpuLevel + 1), COURT.right + 24, 486);
+  ctx.fillText(TEAMS[1].playerName + ' • CPU Lv.' + (curCpuLevel + 1), COURT.right + 24, 486);
 }
 
 function renderBanner() {
@@ -1720,6 +1836,168 @@ function renderHelp() {
 }
 
 function playAgainRect() { return { x: CX - 100, y: 392, w: 200, h: 42 }; }
+function matchupPlayRect() { return { x: CX - 100, y: 356, w: 200, h: 46 }; }
+function matchupBackRect() { return { x: 20, y: 18, w: 116, h: 32 }; }
+
+// ============================================================ dynasty screens
+// Palette: near-black base, Jamaican green/gold, BACKCOURT orange accents.
+const BC_ORANGE = '#EE6723';
+
+function renderDynastyIntro() {
+  ctx.fillStyle = '#0B0B0C'; ctx.fillRect(0, 0, W, H);
+  renderStripes();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 54px Arial, sans-serif';
+  ctx.fillStyle = '#FED100';
+  ctx.fillText('DYNASTY', CX, 96);
+  ctx.font = 'bold 16px "Courier New", monospace';
+  ctx.fillStyle = BC_ORANGE;
+  ctx.fillText('QUALIFIERS  >  WORLD CUP  >  OLYMPICS', CX, 148);
+
+  ctx.font = '15px "Courier New", monospace';
+  ctx.fillStyle = '#E8EEF6';
+  const first = dynTeam();
+  const lines = [
+    'The road starts on island soil and ends on the Olympic podium.',
+    '15 games. Every dynasty draws a fresh field —',
+    'but the top never changes: USA waits in the final.',
+    '',
+    'Lose and you run it back. Progress saves between sessions.',
+    '',
+    'GAME 1: ' + first.full.replace('TEAM ', '') + ' — ' + dynStage(0),
+  ];
+  lines.forEach((ln, i) => ctx.fillText(ln, CX, 208 + i * 26));
+  if (dyn.champs > 0) {
+    ctx.fillStyle = '#FED100';
+    ctx.fillText('GOLD MEDALS: ' + dyn.champs, CX, 400);
+  }
+  const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
+  ctx.font = 'bold 19px Arial, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
+  ctx.fillText('PRESS ANY KEY', CX, 448);
+}
+
+function renderMatchup() {
+  ctx.fillStyle = '#0B0B0C'; ctx.fillRect(0, 0, W, H);
+  renderStripes();
+  const t = dynTeam();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  ctx.font = 'bold 15px "Courier New", monospace';
+  ctx.fillStyle = BC_ORANGE;
+  ctx.fillText(dynStage(dyn.rung), CX, 92);
+  ctx.font = 'bold 30px Arial, sans-serif';
+  ctx.fillStyle = '#FED100';
+  ctx.fillText('GAME ' + (dyn.rung + 1) + ' OF ' + DYN_GAMES, CX, 132);
+
+  // matchup line: centered ASCII + drawn flags at measured offsets (iOS-safe pattern)
+  ctx.font = 'bold 24px Arial, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  const matchup = 'JAMAICA  vs  ' + t.full.replace('TEAM ', '');
+  ctx.fillText(matchup, CX, 210);
+  const half = ctx.measureText(matchup).width / 2;
+  const fw = 36, fh = 23;
+  drawJamFlag(CX - half - 12 - fw, 210 - fh / 2, fw, fh);
+  t.drawFlag(CX + half + 12, 210 - fh / 2, fw, fh);
+
+  ctx.font = '14px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('CPU Lv.' + (dynastyLevel() + 1) + (dynLossStreak > 0 ? '  -  attempt ' + (dynLossStreak + 1) : ''), CX, 252);
+  if (dyn.rung === DYN_GAMES - 1) {
+    ctx.fillStyle = '#FED100';
+    ctx.fillText('THE GOLD-MEDAL FINAL', CX, 280);
+  }
+
+  const b = matchupPlayRect();
+  ctx.fillStyle = '#009B3A';
+  rrect(b.x, b.y, b.w, b.h, 10); ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#FED100'; ctx.stroke();
+  ctx.font = 'bold 18px Arial, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText('TIP OFF', CX, b.y + b.h / 2);
+  ctx.font = '12px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('(or press Enter)', CX, b.y + b.h + 18);
+
+  const bk = matchupBackRect();
+  ctx.strokeStyle = 'rgba(154,176,200,0.7)'; ctx.lineWidth = 2;
+  rrect(bk.x, bk.y, bk.w, bk.h, 8); ctx.stroke();
+  ctx.font = '13px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('< BACK [ESC]', bk.x + bk.w / 2, bk.y + bk.h / 2);
+}
+
+function renderDynastyOver() {
+  ctx.fillStyle = 'rgba(11,11,12,0.92)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const won = dynResult === 'win';
+  ctx.font = 'bold 40px Arial, sans-serif';
+  ctx.fillStyle = won ? '#FED100' : '#FF5050';
+  ctx.fillText(won ? 'GAME ' + dyn.rung + ' WON!' : 'TOUGH LOSS', CX, 110);
+  ctx.font = 'bold 28px "Courier New", monospace';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(scores[0] + '  -  ' + scores[1], CX, 158);
+
+  ctx.font = 'bold 16px "Courier New", monospace';
+  if (won) {
+    const next = dynTeam();
+    ctx.fillStyle = BC_ORANGE;
+    ctx.fillText(dynStage(dyn.rung) + ' - NEXT: ' + next.full.replace('TEAM ', ''), CX, 212);
+  } else {
+    ctx.fillStyle = '#9AB0C8';
+    ctx.fillText('RUN IT BACK - ' + dynTeam().full.replace('TEAM ', '') + ' AGAIN', CX, 212);
+  }
+  if (unlockToast) {
+    ctx.fillStyle = '#FED100';
+    ctx.font = 'bold 15px "Courier New", monospace';
+    ctx.fillText(unlockToast, CX, 246);
+  }
+  const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
+  ctx.font = 'bold 19px Arial, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
+  ctx.fillText('PRESS ANY KEY', CX, 330);
+}
+
+function renderGold() {
+  ctx.fillStyle = '#0B0B0C'; ctx.fillRect(0, 0, W, H);
+  // gold rays
+  ctx.save();
+  ctx.translate(CX, 190);
+  for (let i = 0; i < 12; i++) {
+    ctx.rotate(Math.PI / 6);
+    ctx.fillStyle = 'rgba(254,209,0,' + (0.05 + 0.04 * Math.sin(tGlobal * 2 + i)) + ')';
+    ctx.fillRect(-14, 0, 28, 260);
+  }
+  ctx.restore();
+  renderStripes();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 56px Arial, sans-serif';
+  ctx.fillStyle = '#FED100';
+  ctx.fillText('OLYMPIC GOLD', CX, 130);
+  ctx.font = 'bold 22px Arial, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText('JAMAICA - CHAMPIONS OF THE WORLD', CX, 186);
+  // medal
+  ctx.fillStyle = '#FED100';
+  ctx.beginPath(); ctx.arc(CX, 262, 36, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#B8860B';
+  ctx.font = 'bold 30px Arial, sans-serif';
+  ctx.fillText('1', CX, 264);
+  ctx.strokeStyle = BC_ORANGE; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(CX - 22, 232); ctx.lineTo(CX - 6, 200); ctx.moveTo(CX + 22, 232); ctx.lineTo(CX + 6, 200); ctx.stroke();
+
+  ctx.font = 'bold 16px "Courier New", monospace';
+  ctx.fillStyle = BC_ORANGE;
+  ctx.fillText('GOLD MEDALS: ' + dyn.champs, CX, 336);
+  ctx.font = '13px "Courier New", monospace';
+  ctx.fillStyle = '#9AB0C8';
+  ctx.fillText('a new dynasty draws a new road - your hoops stay unlocked', CX, 364);
+  const pulse = 0.6 + 0.4 * Math.sin(tGlobal * 4);
+  ctx.font = 'bold 19px Arial, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,' + pulse + ')';
+  ctx.fillText('PRESS ANY KEY', CX, 430);
+}
 
 function renderWin() {
   ctx.fillStyle = 'rgba(10,22,40,0.92)';
