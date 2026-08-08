@@ -29,21 +29,28 @@
     bottom: 18px;
     width: 68px; height: 68px;
     border-radius: 50%;
-    border: 3px solid rgba(255, 215, 0, 0.7);
-    background: rgba(0, 155, 58, 0.35);
-    color: #fff;
+    border: 3px solid #EE6723;
+    background: rgba(18, 16, 20, 0.82);
+    color: #FFF3E2;
     font: bold 24px Arial, sans-serif;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.55);
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
     z-index: 10;
   }
-  #touch button:active { background: rgba(255, 215, 0, 0.45); }
+  #touch button:active { background: rgba(238, 103, 35, 0.55); }
   #tL { left: 18px; }
   #tR { left: 100px; }
-  #tJ { right: 100px; background: rgba(0, 119, 139, 0.4); }
-  #tA { right: 18px; background: rgba(255, 107, 0, 0.45); }
+  #tJ { right: 100px; }
+  #tA {
+    right: 18px;
+    background: linear-gradient(180deg, #FF8438, #E05A10);
+    border-color: #FFE3C4;
+    color: #fff;
+  }
+  #touch #tA:active { background: #C64A08; }
   #touch #tA { font-size: 13px; }
 </style>
 </head>
@@ -683,7 +690,8 @@ function defenderInLane(p) {
 
 function startDunk(p) {
   const make = p.fireShots > 0 || Math.random() < 0.9; // flushes most of the time
-  p.dunk = { t: 0, dur: 0.45, sx: p.x, sy: p.y, tx: HOOP.x - 22, ty: HOOP.y - 6, make };
+  // body finishes LEFT of the rim with the slam hand above it — never through the hoop
+  p.dunk = { t: 0, dur: 0.45, sx: p.x, sy: p.y, tx: HOOP.x - 32, ty: HOOP.y + 50, make };
   p.fx = 1; // face the hoop
   p.jumpT = 0;
 }
@@ -1095,15 +1103,15 @@ function updatePlayer(p, ax, dt) {
     if (d.hang !== undefined) {
       // hanging on the rim: hands at rim height, body dangling below
       d.hang -= dt;
-      p.x = d.tx + 6 + Math.sin(tGlobal * 9) * 3;
-      p.y = HOOP.y + 70 + Math.sin(tGlobal * 9) * 2.5;
+      p.x = HOOP.x - 34 + Math.sin(tGlobal * 9) * 3; // dangling in front of the rim, hands on the iron
+      p.y = HOOP.y + 74 + Math.sin(tGlobal * 9) * 2.5;
       if (d.hang <= 0) finishDunk(p);
       return;
     }
     d.t += dt;
     const u = Math.min(1, d.t / d.dur);
     p.x = d.sx + (d.tx - d.sx) * u;
-    p.y = d.sy + (d.ty - d.sy) * u - 46 * Math.sin(Math.PI * u);
+    p.y = d.sy + (d.ty - d.sy) * u - 80 * Math.sin(Math.PI * u);
     if (u >= 1) reachRim(p);
     return;
   }
@@ -1380,12 +1388,13 @@ function renderCourt() {
       const bobA = Math.sin(tGlobal * (1.6 + (seed % 5) * 0.35) + seed) * 2.2;
       const shirt = ['#31435E', '#4A3A63', '#2E5546', '#5E4230', '#413F52'][seed % 5];
       const skinT = ['#8D5524', '#C68642', '#5C3317', '#E0AC69'][seed % 4];
+      const sc = 0.72 + row * 0.09; // back rows smaller = depth
       ctx.save();
       ctx.globalAlpha = dim;
       ctx.fillStyle = shirt;
-      rrect(cxp - 8, y0 + 10 + bobA, 16, 22, 5); ctx.fill();
+      rrect(cxp - 8 * sc, y0 + 10 + bobA, 16 * sc, 22 * sc, 5 * sc); ctx.fill();
       ctx.fillStyle = skinT;
-      ctx.beginPath(); ctx.arc(cxp, y0 + 4 + bobA, 6.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cxp, y0 + 4 + bobA, 6.5 * sc, 0, Math.PI * 2); ctx.fill();
       if (seed % 7 === 0) { // a fan waving
         ctx.strokeStyle = skinT; ctx.lineWidth = 3; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(cxp + 7, y0 + 12 + bobA);
@@ -1403,20 +1412,15 @@ function renderCourt() {
   ctx.fillRect(0, 396, W, FLOOR - 396);
   ctx.fillStyle = 'rgba(255,255,255,0.06)';
   ctx.fillRect(0, 396, W, 2);
-  ctx.font = 'bold 16px Arial, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const ads = [
-    ['JA JAM', '#FED100'], ['BACKCOURT', '#EE6723'], ['DYNASTY', '#00B45A'],
-    ['JA JAM', '#FED100'], ['BACKCOURT', '#EE6723'],
-  ];
-  ads.forEach((ad, i) => {
-    const ax = 80 + i * 160;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    rrect(ax - 66, 404, 132, 26, 4); ctx.fill();
-    ctx.strokeStyle = ad[1] + '44'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = ad[1] + 'AA';
-    ctx.fillText(ad[0], ax, 418);
+  // quiet accent strips instead of a text wall (color says it; words whisper)
+  [['#FED100', 90], ['#EE6723', 400], ['#00B45A', 700]].forEach(s => {
+    ctx.fillStyle = s[0] + '26';
+    ctx.fillRect(s[1] - 55, 414, 110, 7);
   });
+  ctx.font = 'bold 12px Arial, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.fillText('JA JAM', 400, 407);
 
   // hardwood: gradient planks with lacquer sheen
   const fg = ctx.createLinearGradient(0, FLOOR, 0, H);
@@ -1632,11 +1636,11 @@ function renderPlayer(p) {
   };
 
   // ---- far side (shaded)
-  limb(-12, shY + 3, armFar.e[0], armFar.e[1], 5.4, shade(skin, -0.2));
-  limb(armFar.e[0], armFar.e[1], armFar.h[0], armFar.h[1], 4.8, shade(skin, -0.2));
-  hand(armFar.h, shade(skin, -0.2));
-  limb(-6, hipY + 5, legFar.k[0], legFar.k[1], 7, skinD);
-  limb(legFar.k[0], legFar.k[1], legFar.a[0], legFar.a[1], 5.8, skinD);
+  limb(-12, shY + 3, armFar.e[0], armFar.e[1], 5.4, shade(skin, -0.38));
+  limb(armFar.e[0], armFar.e[1], armFar.h[0], armFar.h[1], 4.8, shade(skin, -0.38));
+  hand(armFar.h, shade(skin, -0.38));
+  limb(-6, hipY + 5, legFar.k[0], legFar.k[1], 7, shade(skin, -0.42));
+  limb(legFar.k[0], legFar.k[1], legFar.a[0], legFar.a[1], 5.8, shade(skin, -0.42));
   shoe(legFar.a[0], legFar.a[1]);
 
   // ---- shorts + jersey (broad shoulders, tapered waist)
@@ -1645,7 +1649,7 @@ function renderPlayer(p) {
   ctx.strokeStyle = outline; ctx.lineWidth = 2.2; ctx.stroke();
   ctx.fillStyle = acc; ctx.fillRect(-13.5, hipY + 10.5, 27, 3);
   const jg = ctx.createLinearGradient(0, shY, 0, hipY + 2);
-  jg.addColorStop(0, shade(jersey, 0.18)); jg.addColorStop(1, shade(jersey, -0.28));
+  jg.addColorStop(0, shade(jersey, 0.3)); jg.addColorStop(0.6, jersey); jg.addColorStop(1, shade(jersey, -0.42));
   ctx.beginPath();
   ctx.moveTo(-16, shY - 2);
   ctx.quadraticCurveTo(0, shY - 7, 16, shY - 2);   // shoulder line
@@ -1703,11 +1707,11 @@ function renderPlayer(p) {
   ctx.beginPath(); ctx.ellipse(hx, headY + hry - 2, hrx * 0.7, 6, 0, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
   const hg = ctx.createRadialGradient(hx - 9, headY - 12, 4, hx + 2, headY + 3, hrx + 9);
-  hg.addColorStop(0, shade(skin, 0.42));
-  hg.addColorStop(0.35, skinL);
-  hg.addColorStop(0.68, skin);
-  hg.addColorStop(0.88, skinD);
-  hg.addColorStop(1, shade(skin, -0.45));
+  hg.addColorStop(0, shade(skin, 0.55));
+  hg.addColorStop(0.32, shade(skin, 0.25));
+  hg.addColorStop(0.62, skin);
+  hg.addColorStop(0.85, shade(skin, -0.35));
+  hg.addColorStop(1, shade(skin, -0.6));
   ctx.beginPath(); ctx.ellipse(hx, headY, hrx, hry, 0, 0, Math.PI * 2);
   ctx.fillStyle = hg; ctx.fill();
   ctx.strokeStyle = outline; ctx.lineWidth = 2.6; ctx.stroke();
@@ -1716,9 +1720,9 @@ function renderPlayer(p) {
   ctx.globalAlpha = 0.5;
   ctx.strokeStyle = shade(skin, 0.55); ctx.lineWidth = 2.6;
   ctx.beginPath(); ctx.ellipse(hx, headY, hrx - 2, hry - 2, 0, Math.PI * 1.05, Math.PI * 1.55); ctx.stroke();
-  ctx.globalAlpha = 0.3;
+  ctx.globalAlpha = 0.5;
   ctx.fillStyle = '#FFFFFF';
-  ctx.beginPath(); ctx.ellipse(hx - 9, headY - 11, 4.5, 3, -0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hx - 9, headY - 12, 5.5, 3.6, -0.5, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
   // hair (clipped to the skull so it hugs the curve)
@@ -1766,14 +1770,14 @@ function renderPlayer(p) {
   // ---- face (3/4 toward the play)
   const eyeCol = onFire ? '#E03000' : '#181410';
   const eF = [hx + 3, headY + 1], eN = [hx + 16, headY + 2];
-  const eyeR = F.eyes === 2 ? 6.6 : 5.8, eyeH = F.eyes === 1 ? 4 : 6.4;
+  const eyeR = F.eyes === 2 ? 7.6 : 6.8, eyeH = F.eyes === 1 ? 4.6 : 7.4;
   [eF, eN].forEach(e => {
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath(); ctx.ellipse(e[0], e[1], eyeR, eyeH, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1.4;
     ctx.stroke();
     ctx.fillStyle = eyeCol;
-    ctx.beginPath(); ctx.arc(e[0] + 2, e[1] + 0.6, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(e[0] + 2.2, e[1] + 0.7, 3.6, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath(); ctx.arc(e[0] + 1, e[1] - 0.6, 1, 0, Math.PI * 2); ctx.fill();
   });
@@ -1818,13 +1822,16 @@ function renderPlayer(p) {
 
   // name label above the hair
   const labelY = footY - 148;
-  ctx.font = 'bold 12px "Courier New", monospace';
+  ctx.font = 'bold 11px "Courier New", monospace';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.save();
+  ctx.globalAlpha = 0.8;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(0,0,0,0.7)';
   ctx.strokeText(team.playerName, p.x, labelY);
   ctx.fillStyle = '#FFF';
   ctx.fillText(team.playerName, p.x, labelY);
+  ctx.restore();
   if (onFire) ctx.fillText('\u{1F525}', p.x, labelY - 15);
 }
 
@@ -1912,13 +1919,15 @@ function renderHUD() {
     ctx.fillText(mm + ':' + ss, CX, 40);
   }
   }
-  // fire indicators
-  ctx.font = 'bold 13px "Courier New", monospace';
+  // fire: the hot player's plate burns instead of another text row
   players.forEach((p, i) => {
     if (p.fireShots > 0) {
-      ctx.fillStyle = '#FF8C00';
-      ctx.textAlign = i === 0 ? 'left' : 'right';
-      ctx.fillText('\u{1F525} ' + TEAMS[i].playerName + ' ON FIRE', i === 0 ? 48 : W - 48, 70);
+      const pulse = 0.5 + 0.5 * Math.sin(tGlobal * 10);
+      ctx.save();
+      ctx.globalAlpha = 0.45 + 0.4 * pulse;
+      ctx.strokeStyle = '#FF7A1A'; ctx.lineWidth = 4;
+      rrect(i === 0 ? 30 : W - 246, 16, 216, 48, 10); ctx.stroke();
+      ctx.restore();
     }
   });
   // pause button (tap or P)
@@ -1935,13 +1944,6 @@ function renderHUD() {
   const actLabel = mode === 'practice' || (ball.mode === 'held' && ball.holder === players[0]) ? 'SHOOT' : 'STEAL';
   const btnA = document.getElementById('tA');
   if (btnA.textContent !== actLabel) btnA.textContent = actLabel;
-  ctx.font = '12px "Courier New", monospace';
-  ctx.fillStyle = '#9AB0C8';
-  ctx.textAlign = 'left';
-  const touchOn = getComputedStyle(touchPanel).display !== 'none';
-  ctx.fillText(touchOn ? 'P1 • touch controls' : 'P1 • ←→ move • ↑ jump • SPACE shoot/steal • P pause', COURT.left, 486);
-  ctx.textAlign = 'right';
-  ctx.fillText(TEAMS[1].playerName + ' • CPU Lv.' + (curCpuLevel + 1), COURT.right + 24, 486);
 }
 
 function renderBanner() {
@@ -1957,14 +1959,10 @@ function renderBanner() {
   ctx.restore();
 }
 
-function renderStripes() {
-  const stripes = ['#009B3A', '#FFD700', '#000000', '#00778B', '#FAD44D'];
-  stripes.forEach((c, i) => {
-    ctx.fillStyle = c;
-    ctx.globalAlpha = 0.16;
-    ctx.fillRect(0, 430 + i * 14, W, 14);
-  });
-  ctx.globalAlpha = 1;
+function renderStripes() { // one slim identity bar: green / gold / orange
+  ctx.fillStyle = '#009B3A'; ctx.fillRect(0, H - 8, W / 3, 8);
+  ctx.fillStyle = '#FED100'; ctx.fillRect(W / 3, H - 8, W / 3, 8);
+  ctx.fillStyle = '#EE6723'; ctx.fillRect(W * 2 / 3, H - 8, W / 3, 8);
 }
 
 function helpRect()     { return { x: CX - 215, y: 428, w: 205, h: 34 }; }
@@ -2251,6 +2249,12 @@ function drawUsaFlag(x, y, w, h) { // seven visible stripes, starred canton
 }
 
 function renderTitle() {
+  const glow = ctx.createRadialGradient(CX, 150, 40, CX, 200, 420);
+  glow.addColorStop(0, 'rgba(238,103,35,0.14)');
+  glow.addColorStop(0.5, 'rgba(254,209,0,0.05)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
   renderStripes();
   drawLogo(CX, 104, 88);
 
@@ -2264,11 +2268,6 @@ function renderTitle() {
   const fw = 27, fh = 17;
   drawJamFlag(CX - half - 9 - fw, 178 - fh / 2, fw, fh);
   (TEAMS[1].drawFlag || drawBahFlag)(CX + half + 9, 178 - fh / 2, fw, fh);
-
-  ctx.font = '12px "Courier New", monospace';
-  ctx.fillStyle = '#9AB0C8';
-  const touchOn = getComputedStyle(touchPanel).display !== 'none';
-  ctx.fillText(touchOn ? 'd-pad moves - SHOOT selects' : 'arrows move - ENTER selects', CX, 208);
 
   MENU.forEach((m, i) => {
     const r = menuRect(i);
